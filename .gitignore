@@ -1,0 +1,34 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+.next/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models & Embeddings
+backend/models/
+data/embeddings/
+*.index
+*.meta
+*.pkl
+
+# Build
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
