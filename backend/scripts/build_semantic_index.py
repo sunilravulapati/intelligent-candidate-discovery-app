@@ -122,41 +122,87 @@ def main():
     t1 = time.time()
     logger.info(f"  Loaded {n_candidates:,} candidates in {t1 - t0:.1f}s")
 
-    # ── Step 2: Build composite texts ─────────────────────────────
-    logger.info("Step 2/4: Building candidate composite texts...")
-    model = CandidateEmbeddingModel()
-    texts = [model.build_candidate_search_string(c) for c in candidates]
-    candidate_ids = [c["candidate_id"] for c in candidates]
+    # ── Step 2-4: Checkpoint & Incremental Encode ──────────────────
+    checkpoint_path = index_path + ".checkpoint.npz"
+    existing_embeddings = None
+    existing_ids = []
+    
+    if os.path.exists(checkpoint_path):
+        logger.info(f"Found existing checkpoint at '{checkpoint_path}'. Loading...")
+        try:
+            with np.load(checkpoint_path, allow_pickle=True) as data:
+                existing_embeddings = data["embeddings"]
+                existing_ids = list(data["candidate_ids"])
+            logger.info(f"  Loaded {len(existing_ids):,} existing embeddings from checkpoint.")
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint: {e}. Starting from scratch.")
+            existing_embeddings = None
+            existing_ids = []
 
-    t2 = time.time()
-    logger.info(f"  Built {len(texts):,} search strings in {t2 - t1:.1f}s")
+    indexed_set = set(existing_ids)
+    candidates_to_encode = [c for c in candidates if c["candidate_id"] not in indexed_set]
+    n_todo = len(candidates_to_encode)
 
-    # ── Step 3: Encode embeddings in batches ──────────────────────
-    logger.info(f"Step 3/4: Encoding embeddings (batch_size={args.batch_size})...")
-    logger.info("  Loading sentence-transformers model (first time downloads ~90 MB)...")
+    logger.info(f"Progress Summary:")
+    logger.info(f"  Total candidates: {n_candidates:,}")
+    logger.info(f"  Already indexed : {len(existing_ids):,}")
+    logger.info(f"  To be encoded   : {n_todo:,}")
 
-    embeddings = model.encode(
-        texts,
-        batch_size=args.batch_size,
-        show_progress_bar=True,
-        normalize=False,  # We normalise inside CandidateFaissIndex.add_vectors()
-    )
-    embeddings = embeddings.astype(np.float32)
+    if n_todo > 0:
+        logger.info("Step 2/4: Building composite texts for remaining candidates...")
+        model = CandidateEmbeddingModel()
+        texts = [model.build_candidate_search_string(c) for c in candidates_to_encode]
+        todo_ids = [c["candidate_id"] for c in candidates_to_encode]
 
-    t3 = time.time()
-    throughput = n_candidates / (t3 - t2)
-    logger.info(
-        f"  Encoded {n_candidates:,} candidates in {t3 - t2:.1f}s "
-        f"({throughput:.0f} candidates/sec)"
-    )
-    logger.info(f"  Embedding matrix shape: {embeddings.shape}, dtype: {embeddings.dtype}")
+        # Setup pytorch thread count for optimal CPU performance
+        import torch
+        torch.set_num_threads(4)
+
+        chunk_size = 10000
+        for chunk_idx in range(0, n_todo, chunk_size):
+            chunk_texts = texts[chunk_idx : chunk_idx + chunk_size]
+            chunk_ids = todo_ids[chunk_idx : chunk_idx + chunk_size]
+            
+            logger.info(f"Encoding chunk {chunk_idx // chunk_size + 1} / {(n_todo - 1) // chunk_size + 1} ({len(chunk_texts):,} candidates)...")
+            t_chunk_start = time.time()
+            chunk_embs = model.encode(
+                chunk_texts,
+                batch_size=args.batch_size,
+                show_progress_bar=True,
+                normalize=False,
+            )
+            t_chunk_end = time.time()
+            logger.info(f"  Chunk encoded in {t_chunk_end - t_chunk_start:.1f}s ({len(chunk_texts)/(t_chunk_end - t_chunk_start):.1f} cands/sec)")
+
+            if existing_embeddings is None:
+                existing_embeddings = chunk_embs.astype(np.float32)
+            else:
+                existing_embeddings = np.vstack([existing_embeddings, chunk_embs.astype(np.float32)])
+            
+            existing_ids.extend(chunk_ids)
+
+            # Save checkpoint
+            np.savez_compressed(
+                checkpoint_path,
+                embeddings=existing_embeddings,
+                candidate_ids=np.array(existing_ids)
+            )
+            logger.info(f"  Saved checkpoint with {len(existing_ids):,} embeddings.")
 
     # ── Step 4: Build & save FAISS index ─────────────────────────
     logger.info("Step 4/4: Building FAISS index and saving to disk...")
 
     faiss_index = CandidateFaissIndex(dimension=EMBEDDING_DIM)
-    faiss_index.add_vectors(embeddings, candidate_ids)
+    faiss_index.add_vectors(existing_embeddings, existing_ids)
     faiss_index.save(index_path)
+
+    # Optional: clean up checkpoint file if index built completely
+    if len(existing_ids) == n_candidates and os.path.exists(checkpoint_path):
+        try:
+            os.remove(checkpoint_path)
+            logger.info("Cleaned up checkpoint file.")
+        except Exception as e:
+            logger.warning(f"Could not remove checkpoint file: {e}")
 
     t4 = time.time()
     index_size_mb = os.path.getsize(index_path) / (1024 * 1024)

@@ -45,21 +45,25 @@ class ExplainabilityService:
         cand_title = profile.get("current_title", "")
 
         # ── Skill intersection ─────────────────────────────────────────
-        req_lower = [s.lower() for s in required_skills]
-        cand_skills_raw = candidate.get("skills", [])
-        cand_skill_names = [s.get("name", "") for s in cand_skills_raw]
-        cand_skills_lower = [s.lower() for s in cand_skill_names]
+        matched_skills = candidate.get("_matched_skills")
+        missing_skills = candidate.get("_missed_skills")
 
-        matched_skills: List[str] = []
-        missing_skills: List[str] = []
+        if matched_skills is None or missing_skills is None:
+            req_lower = [s.lower() for s in required_skills]
+            cand_skills_raw = candidate.get("skills", [])
+            cand_skill_names = [s.get("name", "") for s in cand_skills_raw]
+            cand_skills_lower = [s.lower() for s in cand_skill_names]
 
-        for req in required_skills:
-            if req.lower() in cand_skills_lower:
-                # Preserve original casing from candidate profile
-                idx = cand_skills_lower.index(req.lower())
-                matched_skills.append(cand_skill_names[idx])
-            else:
-                missing_skills.append(req)
+            matched_skills = []
+            missing_skills = []
+
+            for req in required_skills:
+                if req.lower() in cand_skills_lower:
+                    # Preserve original casing from candidate profile
+                    idx = cand_skills_lower.index(req.lower())
+                    matched_skills.append(cand_skill_names[idx])
+                else:
+                    missing_skills.append(req)
 
         # ── Reason narrative ───────────────────────────────────────────
         signals = candidate.get("redrob_signals", {})
@@ -91,9 +95,12 @@ class ExplainabilityService:
             )
 
         # Skill overlap
-        if matched_skills:
-            overlap_pct = int(len(matched_skills) / max(len(required_skills), 1) * 100)
-            reasons.append(f"{overlap_pct}% required skill overlap.")
+        skill_match_pct = candidate.get("_skill_match_percent")
+        if skill_match_pct is None:
+            skill_match_pct = int(len(matched_skills) / max(len(required_skills), 1) * 100) if matched_skills else 0
+
+        if skill_match_pct > 0:
+            reasons.append(f"{skill_match_pct}% required skill overlap.")
         else:
             reasons.append("No direct match with required skills found in profile.")
 

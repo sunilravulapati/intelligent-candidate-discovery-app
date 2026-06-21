@@ -6,15 +6,20 @@ import CandidateDrawer from "./CandidateDrawer";
 
 interface ResultsTableProps {
   candidates: CandidateMatch[];
+  onViewCandidate?: (candidate: CandidateMatch) => void;
 }
 
-export default function ResultsTable({ candidates }: ResultsTableProps) {
+export default function ResultsTable({ candidates, onViewCandidate }: ResultsTableProps) {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateMatch | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const openDrawer = (cand: CandidateMatch) => {
-    setSelectedCandidate(cand);
-    setIsDrawerOpen(true);
+    if (onViewCandidate) {
+      onViewCandidate(cand);
+    } else {
+      setSelectedCandidate(cand);
+      setIsDrawerOpen(true);
+    }
   };
 
   const getScoreBadgeClass = (score: number) => {

@@ -96,14 +96,13 @@ class CandidateEmbeddingModel:
                 skill_parts.append(f"{name} ({proficiency})" if proficiency else name)
         skills_text = ", ".join(skill_parts)
 
-        # Experience: titles + abbreviated descriptions
+        # Experience: titles + companies
         experience_parts = []
         for exp in candidate_profile.get("career_history", []):
             title = exp.get("title", "")
             company = exp.get("company", "")
-            desc = exp.get("description", "")[:120].replace("\n", " ")
             if title:
-                experience_parts.append(f"{title} at {company}: {desc}")
+                experience_parts.append(f"{title} at {company}")
         experience_text = " | ".join(experience_parts)
 
         parts = [

@@ -26,12 +26,9 @@ class RetrievalService:
       embed(job_query) → FAISS top-500 → lookup profiles from cache
     """
 
-    # Relative path from the backend root, resolved at runtime
-    DEFAULT_INDEX_PATH = "../data/embeddings/faiss_candidates.index"
-
     def __init__(self, index_path: Optional[str] = None):
         resolved = settings.get_absolute_path(
-            index_path or self.DEFAULT_INDEX_PATH
+            index_path or settings.FAISS_INDEX_PATH
         )
         self._index_path: str = resolved
         self._faiss: CandidateFaissIndex = CandidateFaissIndex(dimension=EMBEDDING_DIM)

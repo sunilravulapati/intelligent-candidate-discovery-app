@@ -127,6 +127,12 @@ export interface HealthStatus {
     local_raw_jsonl: { exists: boolean; size_mb: number };
   };
   mode: string;
+  semantic_mode?: {
+    active: boolean;
+    index_loaded: boolean;
+    index_path: string;
+    candidates_indexed: number;
+  };
 }
 
 export async function checkBackendHealth(): Promise<HealthStatus> {

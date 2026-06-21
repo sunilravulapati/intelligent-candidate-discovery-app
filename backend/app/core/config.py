@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # ML settings
     EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
-    FAISS_INDEX_PATH: str = "../data/embeddings/faiss_index.bin"
+    FAISS_INDEX_PATH: str = "../data/embeddings/faiss_candidates.index"
     RANKER_MODEL_PATH: str = "../data/processed/xgboost_ranker.json"
 
     model_config = SettingsConfigDict(

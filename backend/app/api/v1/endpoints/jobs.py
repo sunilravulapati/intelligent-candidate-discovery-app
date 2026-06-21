@@ -42,6 +42,8 @@ class CandidateMatchResponse(BaseModel):
     match_score: float
     # Semantic retrieval score
     semantic_similarity_percent: int
+    # Title alignment score
+    title_alignment_percent: int
     # Skill Jaccard overlap
     skills_match_percent: int
     # Final hybrid weighted score
@@ -118,7 +120,7 @@ def match_candidates(
           ↓ [Skill parse fallback if empty]
           ↓ RetrievalService.load_index_and_cache()   [once, cached in memory]
           ↓ RetrievalService.retrieve_candidates()    [FAISS top-500 or full keyword scan]
-          ↓ RankingService.hybrid_rank()              [0.5×sem + 0.2×skill + 0.15×exp + 0.15×act]
+          ↓ RankingService.hybrid_rank()              [0.35×sem + 0.20×title + 0.30×skill + 0.10×exp + 0.05×act]
           ↓ ExplainabilityService.generate_explanation()
           ↓ Top-K results
     """
@@ -187,6 +189,7 @@ def match_candidates(
         required_skills=req_skills,
         candidates_with_scores=candidates_with_scores,
         top_k=100,
+        job_title=request.title,
     )
     t_rank_ms = int((time.time() - t_rank_start) * 1000)
 
@@ -200,7 +203,8 @@ def match_candidates(
         profile = cand.get("profile", {})
         overall = cand.get("overall_score", 0.0)
         sem_pct = cand.get("semantic_similarity_percent", 0)
-        skill_pct = cand.get("skills_match_percent", 0)
+        title_pct = cand.get("title_alignment_percent", 0)
+        skill_pct = cand.get("_skill_match_percent", 0)
         semantic_sim = cand.get("_semantic_similarity", 0.0)
         scores.append(overall)
 
@@ -223,6 +227,7 @@ def match_candidates(
                 headline=profile.get("headline", ""),
                 match_score=round(overall, 2),
                 semantic_similarity_percent=sem_pct,
+                title_alignment_percent=title_pct,
                 skills_match_percent=skill_pct,
                 overall_score=round(overall, 4),
                 years_of_experience=profile.get("years_of_experience", 0.0),

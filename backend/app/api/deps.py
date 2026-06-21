@@ -14,8 +14,13 @@ def get_embeddings_service() -> EmbeddingsService:
     return EmbeddingsService()
 
 
+_retrieval_service = None
+
 def get_retrieval_service() -> RetrievalService:
-    return RetrievalService()
+    global _retrieval_service
+    if _retrieval_service is None:
+        _retrieval_service = RetrievalService()
+    return _retrieval_service
 
 
 def get_ranking_service() -> RankingService:

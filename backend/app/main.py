@@ -1,11 +1,32 @@
+from contextlib import asynccontextmanager
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
+from app.api import deps
+
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        logger.info("Initializing search/retrieval service at application startup...")
+        retrieval = deps.get_retrieval_service()
+        ingestion = deps.get_ingestion_service()
+        retrieval.load_index_and_cache(ingestion)
+        if retrieval.is_semantic_ready():
+            logger.info("Semantic retrieval service initialized successfully and ready.")
+        else:
+            logger.warning("Retrieval service initialized, but FAISS index is missing. Operating in keyword fallback mode.")
+    except Exception as e:
+        logger.error(f"Error during startup index loading: {e}", exc_info=True)
+    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
 )
 
 # Set up CORS middleware for local frontend access
