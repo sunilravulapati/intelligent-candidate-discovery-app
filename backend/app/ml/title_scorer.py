@@ -52,6 +52,7 @@ def _seniority_tier(tokens: Set[str]) -> int:
 _ROLE_FAMILIES: Dict[str, Set[str]] = {
     "backend": {
         "backend", "back end", "back-end", "server side", "server-side",
+        "backend systems", "systems engineer", "backend systems engineer",
         "api", "api developer", "api engineer", "node", "django", "flask",
         "fastapi", "spring boot", "rails", "ruby on rails",
         "microservices", "rest api", "graphql", "grpc",
@@ -224,7 +225,9 @@ class TitleAlignmentScorer:
             # Partial credit for adjacent families
             family_score = 0.55
         else:
+            # Conflicting role families — penalise shared generic tokens (e.g. "engineer")
             family_score = 0.0
+            jaccard = min(jaccard, 0.15)
 
         # ── Signal 3: seniority tier alignment ──────────────────────────────
         job_tier  = _seniority_tier(job_tok)

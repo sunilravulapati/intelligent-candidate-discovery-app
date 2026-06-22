@@ -205,35 +205,34 @@ def _match_required_skills(
     return round(ratio, 4), matched, missed
 
 
-# ── Default weights — new spec ────────────────────────────────────────────────
-# Previous: semantic=0.40, title_alignment=0.20, skill_overlap=0.20, exp=0.10, act=0.10
-# New     : semantic=0.35, title_alignment=0.20, skill_overlap=0.30, exp=0.10, act=0.05
+# ── Default weights — role/skill/semantic first, activity last ────────────────
+# Prioritises Role Fit > Skill Fit > Semantic Fit over engagement signals.
+# Activity is gated by role+skill fit so it cannot lift unrelated profiles.
 
 DEFAULT_WEIGHTS: Dict[str, float] = {
-    "semantic_similarity": 0.35,
-    "title_alignment":     0.20,
-    "skill_overlap":       0.30,
+    "title_alignment":     0.28,  # Role Fit
+    "skill_overlap":       0.30,  # Skill Fit
+    "semantic_similarity": 0.27,  # Semantic Fit
     "experience_match":    0.10,
     "activity_score":      0.05,
 }
 
 OLD_WEIGHTS: Dict[str, float] = {
-    "semantic_similarity": 0.40,
-    "title_alignment":     0.20,
-    "skill_overlap":       0.20,
+    "semantic_similarity": 0.60,
+    "skill_overlap":       0.25,
     "experience_match":    0.10,
-    "activity_score":      0.10,
+    "activity_score":      0.05,
 }
 
 
 class RankingService:
     """
     Orchestrates candidate re-ranking via a hybrid weighted formula combining:
-      - Semantic similarity  (FAISS cosine score)        weight=0.35
-      - Title alignment      (TitleAlignmentScorer)      weight=0.20
+      - Title alignment      (role-family + token match) weight=0.28
       - Skill overlap        (alias-aware matching)      weight=0.30
+      - Semantic similarity  (FAISS cosine score)        weight=0.27
       - Experience match     (years normalised)          weight=0.10
-      - Activity score       (composite Redrob signals)  weight=0.05
+      - Activity score       (gated by role+skill fit)   weight=0.05
 
     Falls back to XGBoost / rule-based heuristic when semantic scores are absent.
     """
@@ -323,20 +322,25 @@ class RankingService:
             act_score   = self._activity_score(cand)
             title_align = self._title_alignment(job_title, cand)
 
-            overall = (
-                w.get("semantic_similarity", 0.0) * semantic_sim
-                + w.get("title_alignment",     0.0) * title_align
-                + w.get("skill_overlap",        0.0) * skill_ratio
-                + w.get("experience_match",     0.0) * exp_match
-                + w.get("activity_score",       0.0) * act_score
+            # Gate activity: poor role/skill fit cannot be boosted by engagement
+            fit_gate = min(1.0, (title_align * 0.55 + skill_ratio * 0.45))
+            effective_act = act_score * fit_gate
+
+            overall = min(
+                w.get("title_alignment",     0.0) * title_align
+                + w.get("skill_overlap",       0.0) * skill_ratio
+                + w.get("semantic_similarity", 0.0) * semantic_sim
+                + w.get("experience_match",    0.0) * exp_match
+                + w.get("activity_score",      0.0) * effective_act,
+                1.0,
             )
 
             # Component contributions (weight × raw_score)
-            contrib_semantic = w.get("semantic_similarity", 0.0) * semantic_sim
             contrib_title    = w.get("title_alignment",     0.0) * title_align
             contrib_skill    = w.get("skill_overlap",       0.0) * skill_ratio
+            contrib_semantic = w.get("semantic_similarity", 0.0) * semantic_sim
             contrib_exp      = w.get("experience_match",    0.0) * exp_match
-            contrib_act      = w.get("activity_score",      0.0) * act_score
+            contrib_act      = w.get("activity_score",      0.0) * effective_act
 
             cand_copy = cand.copy()
             # Raw component scores
@@ -345,9 +349,11 @@ class RankingService:
             cand_copy["_skill_overlap"]            = round(skill_ratio, 4)
             cand_copy["_experience_match"]         = round(exp_match, 4)
             cand_copy["_activity_score"]           = round(act_score, 4)
+            cand_copy["_activity_effective"]       = round(effective_act, 4)
+            cand_copy["_activity_fit_gate"]        = round(fit_gate, 4)
             # Weighted contributions
-            cand_copy["_contrib_semantic"]         = round(contrib_semantic, 4)
             cand_copy["_contrib_title"]            = round(contrib_title, 4)
+            cand_copy["_contrib_semantic"]         = round(contrib_semantic, 4)
             cand_copy["_contrib_skill"]            = round(contrib_skill, 4)
             cand_copy["_contrib_exp"]              = round(contrib_exp, 4)
             cand_copy["_contrib_act"]              = round(contrib_act, 4)
@@ -362,8 +368,16 @@ class RankingService:
             cand_copy["title_alignment_percent"]   = int(title_align * 100)
             ranked.append(cand_copy)
 
-        # Sort: overall_score desc, then candidate_id asc for determinism
-        ranked.sort(key=lambda x: (-x["overall_score"], x["candidate_id"]))
+        # Sort: overall desc → role fit → skill fit → semantic → id (deterministic)
+        ranked.sort(
+            key=lambda x: (
+                -x["overall_score"],
+                -x["_title_alignment"],
+                -x["_skill_overlap"],
+                -x["_semantic_similarity"],
+                x["candidate_id"],
+            )
+        )
         return ranked[:top_k]
 
     # ── Legacy XGBoost path (kept for compatibility) ─────────────

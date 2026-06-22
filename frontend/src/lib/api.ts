@@ -52,13 +52,24 @@ export interface CandidateMatch {
   candidate_id: string;
   name: string;
   headline: string;
+  current_title: string;
+  rank: number;
   /** Legacy: equals overall_score */
   match_score: number;
-  /** Cosine similarity from FAISS × 100, 0 in keyword mode */
+  /** Role / title alignment × 100 */
+  role_fit_percent: number;
+  /** Required skill coverage × 100 */
+  skill_fit_percent: number;
+  /** Semantic similarity × 100 */
+  semantic_fit_percent: number;
   semantic_similarity_percent: number;
-  /** Jaccard skill overlap × 100 */
+  title_alignment_percent: number;
   skills_match_percent: number;
-  /** Final hybrid weighted score (0-1) */
+  matched_skills: string[];
+  missing_skills: string[];
+  ranking_reasons: string[];
+  experience_score: number;
+  activity_score: number;
   overall_score: number;
   years_of_experience: number;
   current_company: string;
@@ -74,10 +85,19 @@ export interface SearchMetrics {
   retrieval_pool_size: number;
   avg_match_score: number;
   retrieval_time_ms: number;
+  embedding_time_ms?: number;
+  faiss_time_ms?: number;
   ranking_time_ms: number;
+  explainability_time_ms?: number;
   total_time_ms: number;
   retrieval_mode: string;
+  embedding_cache_hit?: boolean;
+  embedding_calls_per_request?: number;
+  embedding_calls_per_session?: number;
+  embedding_cache_hits_per_session?: number;
+  embedding_cache_misses_per_session?: number;
   top_skills_found: string[];
+  timing_breakdown?: Record<string, number>;
 }
 
 export interface JobSearchResponse {
@@ -85,14 +105,34 @@ export interface JobSearchResponse {
   results: CandidateMatch[];
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/** Browser calls same-origin /api (proxied by Next.js). SSR uses BACKEND_URL directly. */
+function getApiBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const url = `${getApiBaseUrl()}${path}`;
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    const hint =
+      typeof window !== "undefined"
+        ? " Make sure the FastAPI backend is running (cd backend && python -m app.run)."
+        : "";
+    const message = err instanceof Error ? err.message : "Network request failed";
+    throw new Error(`${message}.${hint}`);
+  }
+}
 
 export async function searchCandidates(
   title: string,
   description: string,
   requiredSkills: string[] = []
 ): Promise<JobSearchResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/jobs`, {
+  const response = await apiFetch("/api/jobs", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -107,7 +147,7 @@ export async function searchCandidates(
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(errText || "Failed to search candidates.");
+    throw new Error(errText || `Search failed (${response.status}).`);
   }
 
   return response.json();
@@ -133,18 +173,24 @@ export interface HealthStatus {
     index_path: string;
     candidates_indexed: number;
   };
+  startup_status?: {
+    cache_loaded: boolean;
+    faiss_loaded: boolean;
+    model_loaded: boolean;
+    ready: boolean;
+  };
 }
 
 export async function checkBackendHealth(): Promise<HealthStatus> {
-  const response = await fetch(`${API_BASE_URL}/api/health`, {
+  const response = await apiFetch("/api/health", {
     method: "GET",
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
     },
   });
 
   if (!response.ok) {
-    throw new Error("Backend service is currently unreachable.");
+    throw new Error(`Backend returned ${response.status}. Is the API server running on port 8000?`);
   }
 
   return response.json();

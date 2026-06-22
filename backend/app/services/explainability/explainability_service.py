@@ -1,23 +1,105 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 
 class ExplainabilityService:
     """
-    Generates structured AI insights explaining why a candidate matches a specific job role.
+    Generates structured recruiter-friendly explanations for candidate ranking.
 
-    Output format:
-        Matched:
-        <comma-separated matched skills>
-
-        Missing:
-        <comma-separated missing skills>
-
-        Reason:
-        <recruiter-friendly narrative>
+    Skill lists always come from ranking pre-compute (_matched_skills / _missed_skills)
+    so matched, missing, and skill % share a single source of truth.
     """
 
     def __init__(self) -> None:
         pass
+
+    def _resolve_skills(
+        self, required_skills: List[str], candidate: Dict[str, Any]
+    ) -> Tuple[List[str], List[str], int]:
+        """Return (matched, missing, skill_match_percent) from ranking artifacts."""
+        matched = list(candidate.get("_matched_skills") or [])
+        missing = list(candidate.get("_missed_skills") or [])
+        skill_pct = candidate.get("_skill_match_percent")
+        if skill_pct is None and required_skills:
+            skill_pct = int(len(matched) / len(required_skills) * 100)
+        elif skill_pct is None:
+            skill_pct = 0
+        return matched, missing, int(skill_pct)
+
+    def generate_ranking_reasons(
+        self,
+        job_title: str,
+        required_skills: List[str],
+        candidate: Dict[str, Any],
+        semantic_similarity: Optional[float] = None,
+        rank: int = 0,
+    ) -> List[str]:
+        """Recruiter-friendly bullet reasons ordered by ranking importance."""
+        profile = candidate.get("profile", {})
+        cand_exp = float(profile.get("years_of_experience", 0.0))
+        cand_title = profile.get("current_title", "") or profile.get("headline", "")
+
+        matched, missing, skill_pct = self._resolve_skills(required_skills, candidate)
+        title_align = float(candidate.get("_title_alignment", 0.0))
+        title_pct = int(title_align * 100)
+        sem_pct = int((semantic_similarity or 0.0) * 100)
+
+        signals = candidate.get("redrob_signals", {})
+        reasons: List[str] = []
+
+        # 1. Title / role alignment (highest priority)
+        job_norm = job_title.strip().lower()
+        cand_norm = cand_title.strip().lower()
+        if job_norm and cand_norm and job_norm == cand_norm:
+            reasons.append(f"Exact {job_title} title match")
+        elif title_pct >= 85:
+            reasons.append(f"Strong title alignment — {cand_title} ({title_pct}% role fit)")
+        elif title_pct >= 65:
+            reasons.append(f"High role alignment — {cand_title} ({title_pct}% role fit)")
+        elif title_pct >= 40:
+            reasons.append(f"Partial role alignment with {job_title} ({title_pct}%)")
+        elif title_pct > 0:
+            reasons.append(f"Limited role alignment — current title: {cand_title}")
+
+        # 2. Required skills
+        req_count = len(required_skills)
+        if req_count > 0:
+            if matched:
+                for skill in matched[:4]:
+                    reasons.append(f"{skill} matched")
+                reasons.append(f"{len(matched)}/{req_count} required skills matched ({skill_pct}% skill fit)")
+            else:
+                reasons.append("No required skills matched in profile")
+
+        # 3. Semantic alignment
+        if semantic_similarity is not None and semantic_similarity > 0:
+            if sem_pct >= 75:
+                reasons.append(f"Strong semantic alignment ({sem_pct}%)")
+            elif sem_pct >= 50:
+                reasons.append(f"Good semantic alignment ({sem_pct}%)")
+            else:
+                reasons.append(f"Moderate semantic alignment ({sem_pct}%)")
+
+        # 4. Experience
+        if cand_exp > 0:
+            exp_score = float(candidate.get("_experience_match", 0.0))
+            if exp_score >= 0.6:
+                reasons.append(f"{cand_exp:.0f} years relevant experience")
+            else:
+                reasons.append(f"{cand_exp:.0f} years experience in field")
+
+        # 5. Profile strength (only when fit is already reasonable)
+        fit_gate = float(candidate.get("_activity_fit_gate", 0.0))
+        if fit_gate >= 0.4:
+            if signals.get("open_to_work_flag"):
+                reasons.append("Active job seeker")
+            github = float(signals.get("github_activity_score", -1.0))
+            if github >= 60:
+                reasons.append(f"Active GitHub profile ({int(github)}/100)")
+
+        if rank == 1 and not reasons:
+            reasons.append("Top-ranked by hybrid role + skill + semantic scoring")
+
+        return reasons
 
     def generate_explanation(
         self,
@@ -25,100 +107,30 @@ class ExplainabilityService:
         required_skills: List[str],
         candidate: Dict[str, Any],
         semantic_similarity: Optional[float] = None,
+        rank: int = 0,
     ) -> str:
         """
-        Creates a structured explanation showing matched/missing skills and a
-        recruiter-friendly reason that includes semantic alignment when available.
-
-        Args:
-            job_title: The target job title.
-            required_skills: List of required skills from the job query.
-            candidate: Candidate profile dict (as returned by ingestion service).
-            semantic_similarity: Cosine similarity score [0, 1] from FAISS, or None in
-                                 keyword-fallback mode.
-
-        Returns:
-            str: Multi-section explanation string.
+        Creates a structured explanation with matched/missing skills and bulleted reasons.
         """
-        profile = candidate.get("profile", {})
-        cand_exp = float(profile.get("years_of_experience", 0.0))
-        cand_title = profile.get("current_title", "")
+        matched, missing, _ = self._resolve_skills(required_skills, candidate)
+        reasons = self.generate_ranking_reasons(
+            job_title, required_skills, candidate, semantic_similarity, rank
+        )
 
-        # ── Skill intersection ─────────────────────────────────────────
-        matched_skills = candidate.get("_matched_skills")
-        missing_skills = candidate.get("_missed_skills")
+        title = f"Why Ranked #{rank}" if rank else "Why Ranked"
+        positive_lines = [f"+ {reason}" for reason in reasons]
+        if not positive_lines:
+            positive_lines.append("+ Ranked by deterministic role, skill, semantic, experience, and activity signals")
 
-        if matched_skills is None or missing_skills is None:
-            req_lower = [s.lower() for s in required_skills]
-            cand_skills_raw = candidate.get("skills", [])
-            cand_skill_names = [s.get("name", "") for s in cand_skills_raw]
-            cand_skills_lower = [s.lower() for s in cand_skill_names]
+        missing_lines = [f"- {skill}" for skill in missing]
+        if not missing_lines:
+            missing_lines.append("- No required skills missing")
 
-            matched_skills = []
-            missing_skills = []
-
-            for req in required_skills:
-                if req.lower() in cand_skills_lower:
-                    # Preserve original casing from candidate profile
-                    idx = cand_skills_lower.index(req.lower())
-                    matched_skills.append(cand_skill_names[idx])
-                else:
-                    missing_skills.append(req)
-
-        # ── Reason narrative ───────────────────────────────────────────
-        signals = candidate.get("redrob_signals", {})
-        open_to_work = signals.get("open_to_work_flag", False)
-        github_score = float(signals.get("github_activity_score", -1.0))
-
-        reasons: List[str] = []
-
-        # Semantic alignment (first, most important)
-        if semantic_similarity is not None and semantic_similarity > 0:
-            sem_pct = int(semantic_similarity * 100)
-            if sem_pct >= 75:
-                strength = "Strong"
-            elif sem_pct >= 50:
-                strength = "Good"
-            else:
-                strength = "Moderate"
-            reasons.append(
-                f"{strength} semantic alignment with {job_title} requirements "
-                f"({sem_pct}% semantic match)."
-            )
-
-        # Experience
-        if cand_exp > 0:
-            reasons.append(
-                f"{cand_exp} years of professional experience as a {cand_title}."
-                if cand_title
-                else f"{cand_exp} years of professional experience."
-            )
-
-        # Skill overlap
-        skill_match_pct = candidate.get("_skill_match_percent")
-        if skill_match_pct is None:
-            skill_match_pct = int(len(matched_skills) / max(len(required_skills), 1) * 100) if matched_skills else 0
-
-        if skill_match_pct > 0:
-            reasons.append(f"{skill_match_pct}% required skill overlap.")
-        else:
-            reasons.append("No direct match with required skills found in profile.")
-
-        # Activity signals
-        if open_to_work:
-            reasons.append("Candidate is actively open to new roles.")
-        if github_score >= 60:
-            reasons.append(
-                f"Strong open-source engagement (GitHub score: {int(github_score)}/100)."
-            )
-
-        # ── Format output ──────────────────────────────────────────────
-        matched_str = ", ".join(matched_skills) if matched_skills else "None"
-        missing_str = ", ".join(missing_skills) if missing_skills else "None"
-        reason_str = " ".join(reasons)
-
+        matched_str = ", ".join(matched) if matched else "None"
         return (
-            f"Matched:\n{matched_str}\n\n"
-            f"Missing:\n{missing_str}\n\n"
-            f"Reason:\n{reason_str}"
+            f"{title}\n\n"
+            + "\n".join(positive_lines)
+            + f"\n\nMatched Skills: {matched_str}\n\n"
+            + "Missing:\n"
+            + "\n".join(missing_lines)
         )

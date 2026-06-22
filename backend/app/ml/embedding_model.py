@@ -1,8 +1,12 @@
 import numpy as np
 from typing import List, Union
+import logging
+import time
 
 # Embedding dimension for all-MiniLM-L6-v2
 EMBEDDING_DIM = 384
+logger = logging.getLogger(__name__)
+_ENCODE_CALLS = 0
 
 
 class CandidateEmbeddingModel:
@@ -19,7 +23,19 @@ class CandidateEmbeddingModel:
         """Loads the SentenceTransformer model lazily to save startup memory."""
         if self.model is None:
             from sentence_transformers import SentenceTransformer
-            self.model = SentenceTransformer(self.model_name)
+            import logging
+            logger = logging.getLogger(__name__)
+            try:
+                logger.info(f"Loading SentenceTransformer model '{self.model_name}' locally (local_files_only=True)...")
+                self.model = SentenceTransformer(self.model_name, local_files_only=True)
+                logger.info("Successfully loaded SentenceTransformer model from local cache.")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to load SentenceTransformer model locally ({e}). "
+                    "Attempting remote download/validation from Hugging Face Hub..."
+                )
+                self.model = SentenceTransformer(self.model_name, local_files_only=False)
+                logger.info("Successfully loaded SentenceTransformer model remotely.")
 
     def encode(
         self,
@@ -44,11 +60,29 @@ class CandidateEmbeddingModel:
         if self.model is None:
             raise RuntimeError("SentenceTransformer model failed to load.")
 
+        global _ENCODE_CALLS
+        _ENCODE_CALLS += 1
+        item_count = 1 if isinstance(texts, str) else len(texts)
+        t_start = time.time()
+        logger.info(
+            "EMBED MODEL ENCODE START call=%s items=%s batch_size=%s normalize=%s",
+            _ENCODE_CALLS,
+            item_count,
+            batch_size,
+            normalize,
+        )
         embeddings = self.model.encode(
             texts,
             batch_size=batch_size,
             show_progress_bar=show_progress_bar,
             convert_to_numpy=True,
+        )
+        encode_ms = (time.time() - t_start) * 1000
+        logger.info(
+            "EMBED MODEL ENCODE END call=%s items=%s duration_ms=%.2f",
+            _ENCODE_CALLS,
+            item_count,
+            encode_ms,
         )
         embeddings = embeddings.astype(np.float32)
 

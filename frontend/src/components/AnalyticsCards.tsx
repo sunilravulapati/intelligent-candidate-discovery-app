@@ -5,109 +5,71 @@ import { SearchMetrics } from "@/lib/api";
 
 interface AnalyticsCardsProps {
   metrics: SearchMetrics | null;
+  hasSearched?: boolean;
 }
 
-export default function AnalyticsCards({ metrics }: AnalyticsCardsProps) {
-  // Safe fallbacks if metrics is null (e.g. before search)
+export default function AnalyticsCards({ metrics, hasSearched = false }: AnalyticsCardsProps) {
+  if (!hasSearched || !metrics?.retrieval_pool_size) {
+    return null;
+  }
+
+  const timing = metrics.timing_breakdown ?? {};
+  const embeddingMs = metrics.embedding_time_ms ?? Math.round(timing["Query Embedding"] ?? 0);
+  const faissMs = metrics.faiss_time_ms ?? Math.round(timing["FAISS Retrieval"] ?? 0);
+  const rankingMs = metrics.ranking_time_ms ?? Math.round(timing["Candidate Ranking"] ?? 0);
+  const explainabilityMs = metrics.explainability_time_ms ?? Math.round(timing["Explainability Generation"] ?? 0);
+  const cacheState = metrics.embedding_cache_hit ? "cache hit" : "cache miss";
+
   const stats = [
     {
-      id: "stat-candidates-indexed",
-      name: "Candidates Indexed",
-      value: metrics ? metrics.candidates_indexed.toLocaleString() : "--",
-      sub: metrics?.retrieval_pool_size ? `${metrics.retrieval_pool_size.toLocaleString()} in pool` : null,
-      icon: (
-        <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-      ),
-      bgGlow: "from-indigo-500/10 to-indigo-500/0",
-      borderColor: "group-hover:border-indigo-500/30"
+      label: "Candidates Retrieved",
+      value: metrics.retrieval_pool_size.toLocaleString(),
+      sub: `${metrics.candidates_indexed.toLocaleString()} indexed`,
     },
     {
-      id: "stat-avg-match-score",
-      name: "Avg Match Score",
-      value: metrics ? `${Math.round(metrics.avg_match_score * 100)}%` : "--",
-      sub: metrics?.retrieval_mode ? metrics.retrieval_mode : null,
-      icon: (
-        <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10a2 2 0 01-2 2h-2a2 2 0 01-2-2zm9-1V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v14a1 1 0 001 1h2a1 1 0 001-1z" />
-        </svg>
-      ),
-      bgGlow: "from-purple-500/10 to-purple-500/0",
-      borderColor: "group-hover:border-purple-500/30"
+      label: "Average Match Score",
+      value: `${Math.round(metrics.avg_match_score * 100)}%`,
+      sub: metrics.retrieval_mode === "semantic" ? "Semantic mode" : "Keyword mode",
     },
     {
-      id: "stat-retrieval-time",
-      name: "Retrieval Time",
-      value: metrics ? `${metrics.retrieval_time_ms} ms` : "--",
-      sub: metrics?.ranking_time_ms ? `+${metrics.ranking_time_ms}ms rank` : null,
-      icon: (
-        <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      bgGlow: "from-amber-500/10 to-amber-500/0",
-      borderColor: "group-hover:border-amber-500/30"
-    }
+      label: "End-to-End Search",
+      value: `${metrics.total_time_ms}ms`,
+      sub: `Embedding ${embeddingMs}ms (${cacheState})`,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
       {stats.map((stat) => (
-        <div 
-          key={stat.id}
-          id={stat.id}
-          className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 hover:border-slate-700/80 rounded-2xl p-6 shadow-xl relative overflow-hidden group transition duration-300"
+        <div
+          key={stat.label}
+          className="rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl px-5 py-4"
         >
-          {/* Subtle Glow */}
-          <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgGlow} opacity-30 group-hover:opacity-50 transition duration-500`} />
-          
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">
-                {stat.name}
-              </p>
-              <h3 className="text-2xl font-bold text-slate-100 font-mono tracking-tight">
-                {stat.value}
-              </h3>
-              {stat.sub && (
-                <p className="text-[10px] text-slate-500 mt-0.5 uppercase tracking-wider">{stat.sub}</p>
-              )}
-            </div>
-            <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800">
-              {stat.icon}
-            </div>
-          </div>
+          <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">{stat.label}</p>
+          <p className="text-2xl font-bold text-white tabular-nums mt-1 tracking-tight">{stat.value}</p>
+          <p className="text-[10px] text-slate-600 mt-0.5">{stat.sub}</p>
         </div>
       ))}
 
-      {/* Top Skills Card */}
-      <div 
-        id="stat-top-skills"
-        className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 hover:border-slate-700/80 rounded-2xl p-6 shadow-xl relative overflow-hidden group transition duration-300 md:col-span-1"
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-emerald-500/0 opacity-30 group-hover:opacity-50 transition duration-500" />
-        
-        <div className="relative">
-          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            Top Skills Found
-          </p>
-          {metrics && metrics.top_skills_found && metrics.top_skills_found.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {metrics.top_skills_found.map((skill, index) => (
-                <span 
-                  key={index}
-                  className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2 py-0.5 rounded"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="text-slate-600 text-xs py-1">
-              Waiting for query...
-            </div>
-          )}
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl px-5 py-4">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Pipeline Timing</p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 text-[10px]">
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-500">Embedding</span>
+            <span className="text-slate-200 tabular-nums">{embeddingMs}ms</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-500">FAISS</span>
+            <span className="text-slate-200 tabular-nums">{faissMs}ms</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-500">Ranking</span>
+            <span className="text-slate-200 tabular-nums">{rankingMs}ms</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-slate-500">Explain</span>
+            <span className="text-slate-200 tabular-nums">{explainabilityMs}ms</span>
+          </div>
         </div>
       </div>
     </div>

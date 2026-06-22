@@ -88,6 +88,58 @@ PRESET_QUERIES: Dict[str, Dict] = {
             "Swagger", "OpenAPI", "FastAPI", "Node.js",
         ],
     },
+    "frontend engineer": {
+        "description": (
+            "Looking for a Frontend Engineer with strong React and TypeScript "
+            "experience building polished web applications. Next.js, API "
+            "integration, performance optimization, and testing experience preferred."
+        ),
+        "required_skills": [
+            "React", "TypeScript", "JavaScript", "NextJS", "REST API",
+            "Git", "Testing", "HTML", "CSS",
+        ],
+    },
+    "ai engineer": {
+        "description": (
+            "AI Engineer to build applied machine learning and retrieval systems. "
+            "Requires Python, embeddings, vector search, model evaluation, and "
+            "production API experience."
+        ),
+        "required_skills": [
+            "Python", "Pytorch", "HuggingFace", "Embeddings", "Vector Search",
+            "FAISS", "NLP", "Evaluation", "FastAPI",
+        ],
+    },
+    "data scientist": {
+        "description": (
+            "Data Scientist with strong statistical analysis, machine learning, "
+            "Python, SQL, experimentation, and model evaluation experience."
+        ),
+        "required_skills": [
+            "Python", "SQL", "Pandas", "Numpy", "Scikit-learn",
+            "Machine Learning", "Evaluation", "Spark",
+        ],
+    },
+    "devops engineer": {
+        "description": (
+            "DevOps Engineer to own cloud infrastructure, CI/CD, containers, "
+            "Kubernetes operations, monitoring, and production reliability."
+        ),
+        "required_skills": [
+            "AWS", "Docker", "Kubernetes", "Terraform", "CI/CD",
+            "Linux", "Prometheus", "Grafana",
+        ],
+    },
+    "full stack engineer": {
+        "description": (
+            "Full Stack Engineer with frontend and backend experience across React, "
+            "TypeScript, APIs, databases, cloud deployment, and production ownership."
+        ),
+        "required_skills": [
+            "React", "TypeScript", "Python", "Node.js", "REST API",
+            "PostgreSQL", "AWS", "Docker",
+        ],
+    },
 }
 
 

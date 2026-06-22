@@ -2,413 +2,431 @@
 
 import React, { useState } from "react";
 import { CandidateMatch } from "@/lib/api";
+import {
+  RANKING_FORMULA,
+  RANKING_FORMULA_HELP,
+  RANKING_WEIGHTS,
+  fitColorClass,
+  rankBadgeClass,
+  rankTone,
+  scorePercent,
+} from "@/lib/ranking";
 
 interface CandidateDetailProps {
   candidate: CandidateMatch | null;
+  queryTitle?: string;
 }
 
-export default function CandidateDetail({ candidate }: CandidateDetailProps) {
+const CANDIDATE_WORKFLOW_KEY = "redrob.discovery.candidateWorkflow.v1";
+
+type CandidateWorkflowState = Record<string, "saved" | "shortlisted" | "rejected">;
+
+function loadCandidateWorkflowState(): CandidateWorkflowState {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const rawState = window.localStorage.getItem(CANDIDATE_WORKFLOW_KEY);
+    return rawState ? JSON.parse(rawState) : {};
+  } catch {
+    window.localStorage.removeItem(CANDIDATE_WORKFLOW_KEY);
+    return {};
+  }
+}
+
+function ScoreCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div className={`flex-1 min-w-[88px] rounded-xl border px-3 py-3 text-center ${accent}`}>
+      <div className="text-[10px] uppercase tracking-wider font-semibold opacity-70">{label}</div>
+      <div className="text-lg font-bold tabular-nums mt-1">{value}</div>
+    </div>
+  );
+}
+
+export default function CandidateDetail({ candidate, queryTitle }: CandidateDetailProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "experience" | "skills" | "signals">("overview");
+  const [workflowState, setWorkflowState] = useState<CandidateWorkflowState>(() => loadCandidateWorkflowState());
 
   if (!candidate) {
     return (
-      <div className="h-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl flex flex-col items-center justify-center text-center p-8 shadow-2xl">
-        <div className="w-16 h-16 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center mb-4 text-slate-600">
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="h-full bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col items-center justify-center text-center p-10">
+        <div className="w-14 h-14 rounded-2xl bg-slate-900/80 border border-white/[0.06] flex items-center justify-center mb-4 text-slate-600">
+          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
           </svg>
         </div>
-        <p className="text-slate-400 font-semibold text-base">Select a Candidate</p>
-        <p className="text-slate-600 text-xs mt-1.5 max-w-xs leading-relaxed">
-          Choose a candidate from the left list to instantly view their complete profile, skills overlap, and matching explanation.
+        <p className="text-slate-300 font-medium">Select a candidate</p>
+        <p className="text-slate-600 text-sm mt-1.5 max-w-xs">
+          Choose from the shortlist to view match breakdown, skills analysis, and career timeline.
         </p>
       </div>
     );
   }
 
-  // Parse structured explanation
-  const parseExplanation = (explanation: string) => {
-    const matchedMatch = explanation.match(/Matched:\s*([\s\S]*?)(?=\n\nMissing:|$)/);
-    const missingMatch = explanation.match(/Missing:\s*([\s\S]*?)(?=\n\nReason:|$)/);
-    const reasonMatch = explanation.match(/Reason:\s*([\s\S]*)$/);
-
-    const matched = matchedMatch ? matchedMatch[1].trim().split(/,\s*/).filter(Boolean) : [];
-    const missing = missingMatch ? missingMatch[1].trim().split(/,\s*/).filter(Boolean) : [];
-    const reason = reasonMatch ? reasonMatch[1].trim() : explanation;
-
-    return { matched, missing, reason };
+  const matched = candidate.matched_skills ?? [];
+  const missing = candidate.missing_skills ?? [];
+  const currentWorkflow = workflowState[candidate.candidate_id];
+  const setCandidateWorkflow = (status: CandidateWorkflowState[string]) => {
+    setWorkflowState((current) => {
+      const next = { ...current };
+      if (next[candidate.candidate_id] === status) {
+        delete next[candidate.candidate_id];
+      } else {
+        next[candidate.candidate_id] = status;
+      }
+      window.localStorage.setItem(CANDIDATE_WORKFLOW_KEY, JSON.stringify(next));
+      return next;
+    });
   };
+  const requestedSkillCount = matched.length + missing.length;
+  const generatedInsights = [
+    candidate.role_fit_percent >= 75
+      ? `Strong ${queryTitle || "role"} title alignment (${candidate.role_fit_percent}% role fit)`
+      : candidate.role_fit_percent >= 40
+      ? `Partial ${queryTitle || "role"} title alignment (${candidate.role_fit_percent}% role fit)`
+      : `Limited title alignment for ${queryTitle || "this role"} (${candidate.role_fit_percent}% role fit)`,
+    requestedSkillCount > 0
+      ? `${matched.length} of ${requestedSkillCount} required skills matched`
+      : "No explicit required skills were supplied",
+    `${candidate.years_of_experience} years relevant experience`,
+    candidate.semantic_fit_percent > 0
+      ? `${fitColorClass(candidate.semantic_fit_percent).includes("emerald") ? "High" : "Measured"} semantic similarity to job requirements (${candidate.semantic_fit_percent}%)`
+      : "Keyword fallback used because semantic retrieval was unavailable",
+  ];
+  const reasons = candidate.ranking_reasons?.length ? candidate.ranking_reasons : generatedInsights;
 
-  const { matched, missing, reason } = parseExplanation(candidate.explanation);
-
-  const getScoreColor = (score: number) => {
-    if (score >= 0.75) return "text-emerald-400 border-emerald-500/20 bg-emerald-500/5";
-    if (score >= 0.55) return "text-indigo-400 border-indigo-500/20 bg-indigo-500/5";
-    if (score >= 0.35) return "text-amber-400 border-amber-500/20 bg-amber-500/5";
-    return "text-slate-400 border-slate-500/20 bg-slate-500/5";
-  };
-
-  const getScoreProgressColor = (score: number) => {
-    if (score >= 0.75) return "bg-gradient-to-r from-emerald-500 to-teal-500";
-    if (score >= 0.55) return "bg-gradient-to-r from-indigo-500 to-purple-500";
-    if (score >= 0.35) return "bg-gradient-to-r from-amber-500 to-orange-500";
-    return "bg-slate-500";
-  };
+  const breakdownBars = [
+    { label: "Overall Score", pct: scorePercent(candidate.overall_score), weight: "Final", color: "from-white to-slate-300" },
+    { label: "Semantic Score", pct: candidate.semantic_fit_percent, weight: `${RANKING_WEIGHTS.semantic}%`, color: "from-violet-500 to-purple-500" },
+    { label: "Skill Match", pct: candidate.skill_fit_percent, weight: `${RANKING_WEIGHTS.skills}%`, color: "from-indigo-500 to-violet-500" },
+    { label: "Experience Score", pct: scorePercent(candidate.experience_score), weight: `${RANKING_WEIGHTS.experience}%`, color: "from-cyan-500 to-blue-500" },
+    { label: "Role Alignment", pct: candidate.role_fit_percent, weight: `${RANKING_WEIGHTS.role}%`, color: "from-emerald-500 to-teal-500" },
+    { label: "Activity Signal", pct: scorePercent(candidate.activity_score), weight: `${RANKING_WEIGHTS.activity}%`, color: "from-amber-500 to-orange-500" },
+  ];
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl">
-      {/* Detail Header */}
-      <div className="p-5 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4 select-none">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-lg font-bold text-slate-100">{candidate.name}</h2>
-            <span className="text-[9px] text-slate-500 font-mono bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
-              {candidate.candidate_id}
-            </span>
+    <div className="flex flex-col h-full bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.2)]">
+      {/* Header */}
+      <div className="px-6 py-5 border-b border-white/[0.06] shrink-0 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${rankBadgeClass(candidate.rank)}`}>
+                #{candidate.rank} {rankTone(candidate.rank)}
+              </span>
+              {candidate.rank === 1 && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  Top Match
+                </span>
+              )}
+            </div>
+            <h2 className="text-xl font-semibold text-white mt-2 tracking-tight">{candidate.name}</h2>
+            <p className="text-sm text-indigo-300/90 font-medium mt-0.5">{candidate.current_title || candidate.headline}</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-2">
+              <span>{candidate.current_company}</span>
+              <span className="text-slate-700">·</span>
+              <span>{candidate.years_of_experience} years experience</span>
+            </div>
           </div>
-          <p className="text-xs text-indigo-300 font-semibold">{candidate.headline}</p>
-          <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 font-medium">
-            <span className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-              {candidate.current_company || "No Company"}
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {candidate.years_of_experience} Years Experience
-            </span>
+          <div className="flex flex-wrap justify-end gap-2 shrink-0">
+            {([
+              { label: "Save", activeLabel: "Saved", value: "saved" },
+              { label: "Shortlist", activeLabel: "Shortlisted", value: "shortlisted" },
+              { label: "Reject", activeLabel: "Rejected", value: "rejected" },
+            ] as const).map((action) => {
+              const active = currentWorkflow === action.value;
+              const activeClass =
+                action.value === "rejected"
+                  ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                  : action.value === "shortlisted"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                  : "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
+              return (
+                <button
+                  key={action.value}
+                  type="button"
+                  onClick={() => setCandidateWorkflow(action.value)}
+                  className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition cursor-pointer ${
+                    active
+                      ? activeClass
+                      : "border-white/[0.08] bg-slate-950/40 text-slate-400 hover:text-slate-100 hover:border-white/[0.16]"
+                  }`}
+                >
+                  {active ? action.activeLabel : action.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Header Scores Ring */}
-        <div className="flex items-center gap-2">
-          {/* Overall */}
-          <div className={`border rounded-xl px-3 py-2 flex flex-col items-center justify-center text-center w-20 ${getScoreColor(candidate.overall_score)}`}>
-            <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-60">Overall</span>
-            <span className="text-sm font-black font-mono mt-0.5">{(candidate.overall_score * 100).toFixed(0)}%</span>
-          </div>
-          {/* Semantic */}
-          <div className="border border-violet-500/20 bg-violet-500/5 text-violet-400 rounded-xl px-3 py-2 flex flex-col items-center justify-center text-center w-20">
-            <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-60">Semantic</span>
-            <span className="text-sm font-black font-mono mt-0.5">{candidate.semantic_similarity_percent}%</span>
-          </div>
-          {/* Skills */}
-          <div className="border border-purple-500/20 bg-purple-500/5 text-purple-400 rounded-xl px-3 py-2 flex flex-col items-center justify-center text-center w-20">
-            <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-60">Skills</span>
-            <span className="text-sm font-black font-mono mt-0.5">{candidate.skills_match_percent}%</span>
-          </div>
+        <div className="flex gap-2 overflow-x-auto pb-0.5">
+          <ScoreCard label="Overall Match" value={`${scorePercent(candidate.overall_score)}%`} accent="border-indigo-500/25 bg-indigo-500/10 text-indigo-200" />
+          <ScoreCard label="Role Alignment" value={`${candidate.role_fit_percent}%`} accent="border-emerald-500/25 bg-emerald-500/10 text-emerald-200" />
+          <ScoreCard label="Skill Match" value={`${candidate.skill_fit_percent}%`} accent="border-violet-500/25 bg-violet-500/10 text-violet-200" />
+          <ScoreCard label="Semantic" value={`${candidate.semantic_fit_percent}%`} accent="border-purple-500/25 bg-purple-500/10 text-purple-200" />
+          <ScoreCard label="Experience" value={`${scorePercent(candidate.experience_score)}%`} accent="border-cyan-500/25 bg-cyan-500/10 text-cyan-200" />
         </div>
       </div>
 
-      {/* Tabs navigation */}
-      <div className="flex border-b border-slate-800 bg-slate-900/20 px-4 shrink-0 select-none">
+      {/* Tabs */}
+      <div className="flex border-b border-white/[0.06] px-4 shrink-0">
         {(["overview", "experience", "skills", "signals"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`py-3.5 px-4 text-[10px] font-extrabold uppercase tracking-wider border-b-2 transition duration-200 -mb-px ${
+            className={`py-3 px-4 text-xs font-semibold capitalize border-b-2 transition -mb-px cursor-pointer ${
               activeTab === tab
-                ? "border-indigo-500 text-indigo-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-indigo-400 text-indigo-300"
+                : "border-transparent text-slate-500 hover:text-slate-300"
             }`}
           >
-            {tab === "overview" ? "Overview" :
-             tab === "experience" ? "Career" :
-             tab === "skills" ? "Skills" : "Signals"}
+            {tab === "experience" ? "Career" : tab}
           </button>
         ))}
       </div>
 
-      {/* Tab Content Body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-        {/* Tab 1: OVERVIEW */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
         {activeTab === "overview" && (
-          <div className="space-y-5">
-            {/* Match explanation narrative */}
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4.5 space-y-3">
-              <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 select-none">
-                <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                AI Sourcing Explanation
+          <>
+            {/* Why Selected */}
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+                {candidate.rank === 1 ? "Why Ranked #1" : `Why Ranked #${candidate.rank}`}
               </h3>
-              <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-line font-light">
-                {reason}
-              </p>
-            </div>
+              <ul className="space-y-2.5">
+                {reasons.map((reason, idx) => (
+                  <li key={idx} className="flex items-start gap-2.5 text-sm text-slate-300">
+                    <span className="text-emerald-400 mt-0.5 shrink-0">✓</span>
+                    <span>{reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-            {/* Skills overlap breakdown */}
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4.5 space-y-4">
-              <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 select-none">
-                <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10a2 2 0 01-2 2h-2a2 2 0 01-2-2zm9-1V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v14a1 1 0 001 1h2a1 1 0 001-1z" />
-                </svg>
-                Required Skills Match
-              </h3>
-
-              <div className="space-y-4">
-                {/* Matched */}
+            {/* Ranking breakdown */}
+            <section className="rounded-xl border border-white/[0.06] bg-slate-950/30 p-4 space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-2 select-none">
-                    <span>Matched required skills</span>
-                    <span className="text-emerald-400">{matched.length} Matched</span>
-                  </div>
-                  {matched.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {matched.map((skill, idx) => (
-                        <span
-                          key={idx}
-                          className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium font-mono"
-                        >
-                          <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                          </svg>
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-500 italic select-none">No matched required skills found in profile.</p>
-                  )}
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Ranking Breakdown
+                    {queryTitle && <span className="text-slate-600 font-normal normal-case ml-1">for {queryTitle}</span>}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-1" title={RANKING_FORMULA_HELP}>
+                    {RANKING_FORMULA}
+                  </p>
                 </div>
-
-                {/* Missing */}
-                <div>
-                  <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-2 select-none">
-                    <span>Missing required skills</span>
-                    <span className="text-rose-400">{missing.length} Missing</span>
-                  </div>
-                  {missing.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {missing.map((skill, idx) => (
-                        <span
-                          key={idx}
-                          className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium font-mono"
-                        >
-                          <svg className="w-2.5 h-2.5 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-500 italic select-none">No missing required skills.</p>
-                  )}
-                </div>
+                <span
+                  className="inline-flex w-fit items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400"
+                  title={RANKING_FORMULA_HELP}
+                >
+                  Formula
+                </span>
               </div>
-            </div>
-          </div>
+              {breakdownBars.map((bar) => (
+                <div key={bar.label} className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-400">
+                      {bar.label} <span className="text-slate-600">({bar.weight})</span>
+                    </span>
+                    <span className="text-slate-300 font-semibold tabular-nums">{bar.pct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full bg-gradient-to-r ${bar.color} rounded-full transition-all duration-500`}
+                      style={{ width: `${Math.min(bar.pct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </section>
+
+            {/* Skills Analysis */}
+            <section className="space-y-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Skills Analysis</h3>
+
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-xs font-semibold text-emerald-400">Matched Skills</span>
+                  <span className="text-xs text-emerald-400/80 tabular-nums">{matched.length} matched · {candidate.skill_fit_percent}%</span>
+                </div>
+                {matched.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {matched.map((skill) => (
+                      <span key={skill} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No required skills matched.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-xs font-semibold text-rose-400">Missing Skills</span>
+                  <span className="text-xs text-rose-400/80 tabular-nums">{missing.length} missing</span>
+                </div>
+                {missing.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {missing.map((skill) => (
+                      <span key={skill} className="text-xs px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/25 font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-emerald-400/80">All required skills matched.</p>
+                )}
+              </div>
+            </section>
+          </>
         )}
 
-        {/* Tab 2: EXPERIENCE */}
         {activeTab === "experience" && (
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider select-none">Career History Timeline</h3>
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Career Timeline</h3>
             {candidate.career_history.length === 0 ? (
-              <div className="text-center py-6 text-slate-500 text-xs">No career history listed in profile.</div>
+              <p className="text-sm text-slate-500 text-center py-8">No career history available.</p>
             ) : (
-              <div className="relative border-l border-slate-800 ml-3 pl-5 space-y-4">
+              <div className="relative pl-6 space-y-0">
+                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gradient-to-b from-indigo-500/50 via-slate-700 to-transparent" />
                 {candidate.career_history.map((exp, idx) => (
-                  <div key={idx} className="relative group">
-                    {/* Timeline dot */}
-                    <span className="absolute -left-[27px] top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-950 border border-slate-700 group-hover:border-indigo-500 transition-colors">
-                      <span className="h-1.5 w-1.5 rounded-full bg-slate-700 group-hover:bg-indigo-500 transition-colors" />
-                    </span>
-
-                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4 hover:border-slate-700/60 transition duration-150">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div key={idx} className="relative pb-6 last:pb-0">
+                    <div className={`absolute -left-6 top-1.5 w-3.5 h-3.5 rounded-full border-2 ${
+                      idx === 0 ? "bg-indigo-500 border-indigo-400 shadow shadow-indigo-500/40" : "bg-slate-900 border-slate-600"
+                    }`} />
+                    <div className="rounded-xl border border-white/[0.06] bg-slate-950/40 p-4 ml-2">
+                      <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
                         <div>
-                          <h4 className="font-bold text-slate-200 text-xs leading-tight">{exp.title}</h4>
-                          <p className="text-[11px] text-indigo-400 font-semibold mt-0.5">{exp.company}</p>
+                          <h4 className="font-semibold text-sm text-slate-100">{exp.title}</h4>
+                          <p className="text-xs text-indigo-300/90 mt-0.5">{exp.company}</p>
                         </div>
-                        <div className="sm:text-right">
-                          <span className="bg-slate-900 border border-slate-800 text-[9px] text-slate-400 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">
-                            {exp.start_date} to {exp.end_date || "Present"}
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-2 py-0.5 rounded">
+                            {exp.start_date} — {exp.end_date || "Present"}
                           </span>
-                          <p className="text-[9px] text-slate-500 mt-1 font-semibold">
-                            {Math.floor(exp.duration_months / 12) > 0 ? `${Math.floor(exp.duration_months / 12)}y ` : ""}
-                            {exp.duration_months % 12 > 0 ? `${exp.duration_months % 12}m` : ""}
+                          <p className="text-[10px] text-slate-600 mt-1">
+                            {Math.floor(exp.duration_months / 12) > 0 && `${Math.floor(exp.duration_months / 12)}y `}
+                            {exp.duration_months % 12 > 0 && `${exp.duration_months % 12}mo`}
                           </p>
                         </div>
                       </div>
-
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-slate-500 uppercase tracking-widest mt-2.5 font-bold select-none">
-                        <span>Industry: {exp.industry}</span>
-                        <span>•</span>
-                        <span>Company Size: {exp.company_size}</span>
-                      </div>
-
-                      <p className="text-slate-400 text-xs mt-2.5 leading-relaxed font-light whitespace-pre-line border-t border-slate-800/40 pt-2">
-                        {exp.description}
-                      </p>
+                      {exp.description && (
+                        <p className="text-xs text-slate-400 mt-3 leading-relaxed border-t border-white/[0.04] pt-3">
+                          {exp.description}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* Tab 3: SKILLS */}
         {activeTab === "skills" && (
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider select-none">Full Skill Profile</h3>
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Full Skill Profile</h3>
             {candidate.skills.length === 0 ? (
-              <div className="text-center py-6 text-slate-500 text-xs">No skills listed in profile.</div>
+              <p className="text-sm text-slate-500 text-center py-8">No skills listed.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {candidate.skills.map((skill, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between hover:border-slate-700/60 transition duration-150"
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="font-bold text-slate-200 text-xs truncate pr-1">{skill.name}</span>
-                      <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
-                        skill.proficiency === "expert" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" :
-                        skill.proficiency === "advanced" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" :
-                        skill.proficiency === "intermediate" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
-                        "bg-slate-850 text-slate-400 border border-slate-800"
-                      }`}>
-                        {skill.proficiency}
-                      </span>
+                {candidate.skills.map((skill, idx) => {
+                  const isMatched = matched.some(
+                    (m) => m.toLowerCase() === skill.name.toLowerCase()
+                  );
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded-xl border p-3 ${
+                        isMatched
+                          ? "border-emerald-500/25 bg-emerald-500/[0.04]"
+                          : "border-white/[0.06] bg-slate-950/30"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="font-medium text-sm text-slate-200">{skill.name}</span>
+                        <span className="text-[9px] uppercase font-semibold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                          {skill.proficiency}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-2">
+                        {skill.duration_months} mo · {skill.endorsements} endorsements
+                      </div>
                     </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-slate-500 mt-3 font-semibold select-none">
-                      <span>Duration: {skill.duration_months} mos</span>
-                      <span className="flex items-center gap-1">
-                        <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.757a1 1 0 00.707-1.707l-5.414-5.414a1 1 0 00-.707-.293V3a1 1 0 00-1-1h-2a1 1 0 00-1 1v1.586a1 1 0 00-.293.707L4.293 8.293a1 1 0 00-.707 1.707H8.5V12M14 10V8H8.5v2M12 14v7m-3-3h6" />
-                        </svg>
-                        {skill.endorsements} endorsements
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* Tab 4: REDROB SIGNALS */}
         {activeTab === "signals" && (
-          <div className="space-y-4">
-            {/* Completeness bar */}
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4.5">
-              <div className="flex justify-between items-center mb-2 select-none">
-                <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Engagement & completeness</h3>
-                <span className="text-[11px] font-bold text-indigo-400 font-mono">
-                  {candidate.redrob_signals.profile_completeness_score}% Complete
-                </span>
-              </div>
-              <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
+          <section className="space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Recruiter Signals</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                {
+                  label: "Open to Work",
+                  value: candidate.redrob_signals.open_to_work_flag ? "Yes" : "Passive",
+                  highlight: candidate.redrob_signals.open_to_work_flag,
+                },
+                {
+                  label: "Profile Completeness",
+                  value: `${candidate.redrob_signals.profile_completeness_score}%`,
+                  highlight: candidate.redrob_signals.profile_completeness_score >= 80,
+                },
+                {
+                  label: "GitHub Activity",
+                  value:
+                    candidate.redrob_signals.github_activity_score >= 0
+                      ? `${candidate.redrob_signals.github_activity_score}/100`
+                      : "N/A",
+                  highlight: candidate.redrob_signals.github_activity_score >= 60,
+                },
+                {
+                  label: "Recruiter Response Rate",
+                  value: `${Math.round(candidate.redrob_signals.recruiter_response_rate * 100)}%`,
+                  highlight: candidate.redrob_signals.recruiter_response_rate >= 0.5,
+                },
+              ].map((signal) => (
                 <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full"
+                  key={signal.label}
+                  className={`rounded-xl border p-4 ${
+                    signal.highlight
+                      ? "border-emerald-500/25 bg-emerald-500/[0.04]"
+                      : "border-white/[0.06] bg-slate-950/30"
+                  }`}
+                >
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">{signal.label}</div>
+                  <div className={`text-sm font-semibold mt-1.5 ${signal.highlight ? "text-emerald-300" : "text-slate-300"}`}>
+                    {signal.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-white/[0.06] bg-slate-950/30 p-4">
+              <div className="flex justify-between text-xs mb-2">
+                <span className="text-slate-400">Profile Completeness</span>
+                <span className="text-slate-300 font-semibold">{candidate.redrob_signals.profile_completeness_score}%</span>
+              </div>
+              <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full"
                   style={{ width: `${candidate.redrob_signals.profile_completeness_score}%` }}
                 />
               </div>
             </div>
-
-            {/* Sourcing details grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500 select-none">Job Seek Status</span>
-                <div className="mt-1 flex items-center gap-1.5">
-                  {candidate.redrob_signals.open_to_work_flag ? (
-                    <>
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-bold text-emerald-400">Open to Work</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-                      <span className="text-xs font-bold text-slate-400">Passive Sourcing</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500 select-none">Expected Salary</span>
-                <span className="text-xs font-bold text-slate-300 mt-1 font-mono">
-                  {candidate.redrob_signals.expected_salary_range_inr_lpa.min} - {candidate.redrob_signals.expected_salary_range_inr_lpa.max} LPA
-                </span>
-              </div>
-
-              <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500 select-none">Notice Period</span>
-                <span className="text-xs font-bold text-slate-300 mt-1 font-mono">
-                  {candidate.redrob_signals.notice_period_days} Days
-                </span>
-              </div>
-
-              <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500 select-none">Github Sourcing</span>
-                <div className="text-xs font-bold text-slate-300 mt-1 flex items-center gap-1.5 font-mono">
-                  <span className={`h-1.5 w-1.5 rounded-full ${
-                    candidate.redrob_signals.github_activity_score > 70 ? "bg-emerald-500" :
-                    candidate.redrob_signals.github_activity_score > 30 ? "bg-amber-500" :
-                    candidate.redrob_signals.github_activity_score >= 0 ? "bg-rose-500" : "bg-slate-600"
-                  }`} />
-                  <span>
-                    {candidate.redrob_signals.github_activity_score >= 0 
-                      ? `${candidate.redrob_signals.github_activity_score}/100` 
-                      : "No Account"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500 select-none">Work Mode</span>
-                <span className="text-xs font-bold text-slate-300 mt-1 capitalize">
-                  {candidate.redrob_signals.preferred_work_mode}
-                </span>
-              </div>
-
-              <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500 select-none">Relocation</span>
-                <span className="text-xs font-bold text-slate-300 mt-1">
-                  {candidate.redrob_signals.willing_to_relocate ? "Willing" : "Not Sourced"}
-                </span>
-              </div>
-            </div>
-
-            {/* Sourcing funnel */}
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4.5 space-y-3.5">
-              <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider select-none">ATS Interaction Metrics</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-0.5">
-                  <div className="text-[10px] text-slate-500 font-bold select-none">Recruiter Views (30 Days)</div>
-                  <div className="text-sm font-semibold text-slate-300 font-mono">
-                    {candidate.redrob_signals.profile_views_received_30d} views
-                  </div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-[10px] text-slate-500 font-bold select-none">Active Applications</div>
-                  <div className="text-sm font-semibold text-slate-300 font-mono">
-                    {candidate.redrob_signals.applications_submitted_30d} roles
-                  </div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-[10px] text-slate-500 font-bold select-none">Recruiter Response Rate</div>
-                  <div className="text-sm font-semibold text-slate-300 font-mono">
-                    {(candidate.redrob_signals.recruiter_response_rate * 100).toFixed(0)}%
-                  </div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-[10px] text-slate-500 font-bold select-none">Network Connections</div>
-                  <div className="text-sm font-semibold text-slate-300 font-mono">
-                    {candidate.redrob_signals.connection_count}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          </section>
         )}
       </div>
     </div>

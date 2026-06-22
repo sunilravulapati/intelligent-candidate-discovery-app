@@ -28,6 +28,16 @@ def health_check(
         
     semantic_active = retrieval.is_semantic_ready()
     
+    # Determine startup_status
+    cache_loaded = retrieval.is_cache_loaded()
+    faiss_loaded = retrieval._faiss.is_loaded() if retrieval._faiss else False
+    model_loaded = (
+        retrieval._embedding_model.model is not None 
+        if retrieval._embedding_model 
+        else False
+    )
+    ready = cache_loaded and faiss_loaded and model_loaded
+    
     return {
         "status": "ok" if system_ready else "degraded",
         "system_ready": system_ready,
@@ -36,8 +46,14 @@ def health_check(
         "mode": "Semantic Mode" if semantic_active else "Keyword Fallback",
         "semantic_mode": {
             "active": semantic_active,
-            "index_loaded": retrieval._faiss.is_loaded() if retrieval._faiss else False,
+            "index_loaded": faiss_loaded,
             "index_path": retrieval._index_path,
             "candidates_indexed": retrieval._faiss.ntotal if semantic_active else 0
+        },
+        "startup_status": {
+            "cache_loaded": cache_loaded,
+            "faiss_loaded": faiss_loaded,
+            "model_loaded": model_loaded,
+            "ready": ready
         }
     }

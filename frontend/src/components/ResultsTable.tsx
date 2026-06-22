@@ -3,13 +3,15 @@
 import React, { useState } from "react";
 import { CandidateMatch } from "@/lib/api";
 import CandidateDrawer from "./CandidateDrawer";
+import { RANKING_FORMULA, rankBadgeClass, scorePercent } from "@/lib/ranking";
 
 interface ResultsTableProps {
   candidates: CandidateMatch[];
   onViewCandidate?: (candidate: CandidateMatch) => void;
+  isLoading?: boolean;
 }
 
-export default function ResultsTable({ candidates, onViewCandidate }: ResultsTableProps) {
+export default function ResultsTable({ candidates, onViewCandidate, isLoading = false }: ResultsTableProps) {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateMatch | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -23,32 +25,31 @@ export default function ResultsTable({ candidates, onViewCandidate }: ResultsTab
   };
 
   const getScoreBadgeClass = (score: number) => {
-    if (score >= 0.75) return "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
-    if (score >= 0.55) return "bg-indigo-500/10 text-indigo-400 border border-indigo-500/30";
-    if (score >= 0.35) return "bg-amber-500/10 text-amber-400 border border-amber-500/30";
+    const percent = scorePercent(score);
+    if (percent >= 75) return "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+    if (percent >= 55) return "bg-indigo-500/10 text-indigo-400 border border-indigo-500/30";
+    if (percent >= 35) return "bg-amber-500/10 text-amber-400 border border-amber-500/30";
     return "bg-slate-500/10 text-slate-400 border border-slate-500/30";
-  };
-
-  const getSemanticBarColor = (pct: number) => {
-    if (pct >= 75) return "bg-gradient-to-r from-violet-500 to-purple-500";
-    if (pct >= 50) return "bg-gradient-to-r from-indigo-500 to-violet-500";
-    if (pct >= 25) return "bg-gradient-to-r from-sky-500 to-indigo-500";
-    return "bg-slate-600";
   };
 
   // Detect retrieval mode from first result (consistent across all)
   const retrievalMode = candidates.length > 0 ? candidates[0].retrieval_mode : null;
 
   return (
-    <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+    <div className="bg-white/[0.025] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 shadow-[0_18px_70px_rgba(0,0,0,0.28)] relative overflow-hidden">
       {/* Header row */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
-          <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-          Ranked Candidates
-        </h2>
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
+            <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            Ranked Candidates
+          </h2>
+          <p className="text-xs text-slate-500 mt-1" title="Displayed formula mirrors the current backend hybrid ranker.">
+            {RANKING_FORMULA}
+          </p>
+        </div>
         {/* Retrieval Mode Badge */}
         {retrievalMode && (
           <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border flex items-center gap-1.5 ${
@@ -59,28 +60,36 @@ export default function ResultsTable({ candidates, onViewCandidate }: ResultsTab
             <span className={`h-1.5 w-1.5 rounded-full ${
               retrievalMode === "semantic" ? "bg-violet-400 animate-pulse" : "bg-amber-400"
             }`} />
-            {retrievalMode === "semantic" ? "🔷 Semantic Mode" : "⬡ Keyword Fallback"}
+            {retrievalMode === "semantic" ? "Semantic Mode" : "Keyword Fallback"}
           </span>
         )}
       </div>
 
-      {candidates.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl">
-          <svg className="w-12 h-12 text-slate-600 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <p className="text-slate-400 font-medium">No results to display.</p>
-          <p className="text-slate-600 text-xs mt-1">Submit a search query on the left to invoke retrieval.</p>
+      {isLoading ? (
+        <div className="text-center py-16">
+          <div className="flex justify-center gap-1.5 mb-4">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+            ))}
+          </div>
+          <p className="text-slate-400 text-sm">Building your shortlist…</p>
+        </div>
+      ) : candidates.length === 0 ? (
+        <div className="text-center py-16 border border-dashed border-white/[0.06] rounded-xl">
+          <p className="text-slate-400 font-medium">No results yet</p>
+          <p className="text-slate-600 text-sm mt-1">Run a search to see ranked candidates.</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase tracking-wider">
+                <th className="py-4 px-3">Rank</th>
                 <th className="py-4 px-3">Candidate</th>
                 <th className="py-4 px-3 text-center">Overall</th>
-                <th className="py-4 px-3 text-center">Semantic</th>
+                <th className="py-4 px-3 text-center">Role</th>
                 <th className="py-4 px-3 text-center">Skills</th>
+                <th className="py-4 px-3 text-center">Semantic</th>
                 <th className="py-4 px-3 text-center">Exp</th>
                 <th className="py-4 px-3">Company</th>
                 <th className="py-4 px-3 text-right">Details</th>
@@ -89,6 +98,11 @@ export default function ResultsTable({ candidates, onViewCandidate }: ResultsTab
             <tbody className="divide-y divide-slate-800/40 text-sm">
               {candidates.map((cand) => (
                 <tr key={cand.candidate_id} className="hover:bg-slate-800/10 transition duration-150 group">
+                  <td className="py-4 px-3">
+                    <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-[10px] font-black ${rankBadgeClass(cand.rank)}`}>
+                      #{cand.rank}
+                    </span>
+                  </td>
                   {/* Candidate name + headline */}
                   <td className="py-4 px-3">
                     <div>
@@ -104,38 +118,29 @@ export default function ResultsTable({ candidates, onViewCandidate }: ResultsTab
                   {/* Overall Score badge */}
                   <td className="py-4 px-3 text-center">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono ${getScoreBadgeClass(cand.overall_score)}`}>
-                      {(cand.overall_score * 100).toFixed(0)}%
+                      {scorePercent(cand.overall_score)}%
                     </span>
                   </td>
 
-                  {/* Semantic Match % */}
+                  {/* Role Fit */}
                   <td className="py-4 px-3 text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-violet-300 font-medium font-mono text-xs">
-                        {cand.semantic_similarity_percent}%
-                      </span>
-                      <div className="w-14 bg-slate-950 rounded-full h-1 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${getSemanticBarColor(cand.semantic_similarity_percent)}`}
-                          style={{ width: `${cand.semantic_similarity_percent}%` }}
-                        />
-                      </div>
-                    </div>
+                    <span className="text-emerald-300 font-medium font-mono text-xs">
+                      {cand.role_fit_percent}%
+                    </span>
                   </td>
 
-                  {/* Skill Match % */}
+                  {/* Skill Match */}
                   <td className="py-4 px-3 text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-indigo-300 font-medium font-mono text-xs">
-                        {cand.skills_match_percent}%
-                      </span>
-                      <div className="w-14 bg-slate-950 rounded-full h-1 overflow-hidden">
-                        <div
-                          className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full"
-                          style={{ width: `${cand.skills_match_percent}%` }}
-                        />
-                      </div>
-                    </div>
+                    <span className="text-indigo-300 font-medium font-mono text-xs">
+                      {cand.skill_fit_percent}%
+                    </span>
+                  </td>
+
+                  {/* Semantic */}
+                  <td className="py-4 px-3 text-center">
+                    <span className="text-violet-300 font-medium font-mono text-xs">
+                      {cand.semantic_fit_percent}%
+                    </span>
                   </td>
 
                   {/* Experience */}

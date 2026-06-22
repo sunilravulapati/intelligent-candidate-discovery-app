@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CandidateMatch, Skill, Experience, ActivitySignals } from "@/lib/api";
+import { CandidateMatch } from "@/lib/api";
 
 interface CandidateDrawerProps {
   candidate: CandidateMatch | null;

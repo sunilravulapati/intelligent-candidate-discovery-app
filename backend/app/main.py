@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 import logging
+import time
+import threading
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -8,20 +10,37 @@ from app.api import deps
 
 logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+
+def load_all_background():
+    logger.info("Semantic Workspace Initialization Started")
+    t_start = time.time()
     try:
-        logger.info("Initializing search/retrieval service at application startup...")
         retrieval = deps.get_retrieval_service()
         ingestion = deps.get_ingestion_service()
+
+        # Single thread-safe load path (cache + FAISS + embedding model)
+        logger.info("Loading candidate cache, FAISS index, and embedding model...")
+        t_load_start = time.time()
         retrieval.load_index_and_cache(ingestion)
-        if retrieval.is_semantic_ready():
-            logger.info("Semantic retrieval service initialized successfully and ready.")
-        else:
-            logger.warning("Retrieval service initialized, but FAISS index is missing. Operating in keyword fallback mode.")
+        logger.info(f"Completed in {(time.time() - t_load_start)*1000:.2f} ms")
+
+        t_total = time.time() - t_start
+        logger.info("Semantic Workspace Ready")
+        logger.info(f"Total Startup Time: {t_total*1000:.2f} ms")
     except Exception as e:
-        logger.error(f"Error during startup index loading: {e}", exc_info=True)
+        logger.error(f"Error during background workspace initialization: {e}", exc_info=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start loading in a background thread to prevent blocking FastAPI startup
+    thread = threading.Thread(
+        target=load_all_background,
+        daemon=True
+    )
+    thread.start()
     yield
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -32,7 +51,12 @@ app = FastAPI(
 # Set up CORS middleware for local frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production specify exact frontend domains
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

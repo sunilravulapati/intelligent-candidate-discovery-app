@@ -2,6 +2,7 @@
 
 import React from "react";
 import { CandidateMatch } from "@/lib/api";
+import { fitColorClass, rankBadgeClass, rankTone, scorePercent } from "@/lib/ranking";
 
 interface CandidateListProps {
   candidates: CandidateMatch[];
@@ -14,114 +15,76 @@ export default function CandidateList({
   selectedCandidate,
   onSelectCandidate,
 }: CandidateListProps) {
-  const getScoreColorClass = (score: number) => {
-    if (score >= 0.75) return "text-emerald-400 font-bold";
-    if (score >= 0.55) return "text-indigo-400 font-bold";
-    if (score >= 0.35) return "text-amber-400 font-bold";
-    return "text-slate-400 font-bold";
-  };
-
-  const getSemanticColorClass = (pct: number) => {
-    if (pct >= 75) return "text-violet-400 font-medium";
-    if (pct >= 50) return "text-indigo-400 font-medium";
-    return "text-slate-400 font-medium";
-  };
-
-  const getSkillsColorClass = (pct: number) => {
-    if (pct >= 75) return "text-purple-400 font-medium";
-    if (pct >= 50) return "text-indigo-400 font-medium";
-    return "text-slate-400 font-medium";
-  };
-
-  // Detect retrieval mode from first result (consistent across all)
-  const retrievalMode = candidates.length > 0 ? candidates[0].retrieval_mode : null;
-
   return (
-    <div className="flex flex-col h-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl">
-      {/* Header bar */}
-      <div className="p-4 border-b border-slate-800/80 bg-slate-950/40 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-          <span className="text-sm font-bold text-slate-200">
-            Candidates ({candidates.length})
-          </span>
-        </div>
-        {retrievalMode && (
-          <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-            retrievalMode === "semantic"
-              ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
-              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-          }`}>
-            {retrievalMode === "semantic" ? "Semantic" : "Keyword"}
-          </span>
-        )}
+    <div className="flex flex-col h-full bg-white/[0.025] backdrop-blur-xl border border-white/[0.06] rounded-2xl overflow-hidden shadow-[0_18px_70px_rgba(0,0,0,0.28)]">
+      <div className="px-5 py-4 border-b border-white/[0.06] shrink-0">
+        <h3 className="text-sm font-semibold text-white">Ranked Shortlist</h3>
+        <p className="text-xs text-slate-500 mt-0.5">{candidates.length} candidates ranked by fit</p>
       </div>
 
-      {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
         {candidates.map((cand) => {
           const isSelected = selectedCandidate?.candidate_id === cand.candidate_id;
+          const rank = cand.rank;
+          const isTop = rank === 1;
+
           return (
             <button
               key={cand.candidate_id}
               onClick={() => onSelectCandidate(cand)}
-              className={`w-full text-left p-3.5 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2 relative overflow-hidden group select-none ${
+              className={`w-full text-left p-4 rounded-xl transition-all duration-200 cursor-pointer flex flex-col gap-3 relative ${
                 isSelected
-                  ? "bg-indigo-950/20 border-indigo-500/80 shadow-md shadow-indigo-500/5"
-                  : "bg-slate-900/30 border-slate-800/80 hover:bg-slate-800/30 hover:border-slate-700/60"
+                  ? "bg-indigo-500/10 ring-1 ring-indigo-500/40 shadow-lg shadow-indigo-500/5"
+                  : isTop
+                  ? "bg-gradient-to-br from-amber-500/[0.06] to-transparent ring-1 ring-amber-500/20 hover:ring-amber-500/35"
+                  : "bg-slate-900/30 hover:bg-slate-800/40 ring-1 ring-white/[0.04] hover:ring-white/[0.08]"
               }`}
             >
-              {/* Highlight bar */}
               {isSelected && (
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 to-purple-600 rounded-r" />
+                <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-indigo-400 rounded-full" />
               )}
 
-              {/* Title & Name info */}
-              <div className="flex justify-between items-start gap-2">
-                <div className="truncate">
-                  <div className={`font-bold text-sm transition-colors group-hover:text-indigo-300 ${
-                    isSelected ? "text-indigo-200" : "text-slate-200"
-                  }`}>
-                    {cand.name}
+              <div className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${rankBadgeClass(rank)}`}>
+                  #{rank}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={`font-semibold text-sm truncate ${isTop ? "text-amber-50" : "text-slate-100"}`}>
+                      {cand.name}
+                    </div>
+                    {rank <= 3 && (
+                      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold shrink-0">
+                        {rankTone(rank)}
+                      </span>
+                    )}
                   </div>
-                  <div className="text-[11px] text-slate-400 font-medium truncate mt-0.5">
-                    {cand.headline}
+                  <div className="text-xs text-indigo-300/90 font-medium truncate mt-0.5">
+                    {cand.current_title || cand.headline}
                   </div>
+                  <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                    {cand.current_company} · {cand.years_of_experience} yrs
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className={`text-lg font-bold tabular-nums ${fitColorClass(scorePercent(cand.overall_score))}`}>
+                    {scorePercent(cand.overall_score)}%
+                  </div>
+                  <div className="text-[9px] uppercase tracking-wider text-slate-600 font-medium">Overall</div>
                 </div>
               </div>
 
-              {/* Scores row */}
-              <div className="flex items-center gap-1.5 text-[11px] bg-slate-950/40 border border-slate-800/50 rounded-lg p-1.5 select-none font-mono">
-                <div className="flex-1 text-center border-r border-slate-800/50">
-                  <span className="text-slate-500 font-sans mr-0.5 text-[9px] uppercase tracking-wider">Overall:</span>
-                  <span className={getScoreColorClass(cand.overall_score)}>
-                    {(cand.overall_score * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="flex-1 text-center border-r border-slate-800/50">
-                  <span className="text-slate-500 font-sans mr-0.5 text-[9px] uppercase tracking-wider">Sem:</span>
-                  <span className={getSemanticColorClass(cand.semantic_similarity_percent)}>
-                    {cand.semantic_similarity_percent}%
-                  </span>
-                </div>
-                <div className="flex-1 text-center">
-                  <span className="text-slate-500 font-sans mr-0.5 text-[9px] uppercase tracking-wider">Skills:</span>
-                  <span className={getSkillsColorClass(cand.skills_match_percent)}>
-                    {cand.skills_match_percent}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Company & experience metadata */}
-              <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium select-none">
-                <span className="truncate pr-2">
-                  {cand.current_company || "No Company"}
-                </span>
-                <span className="shrink-0 bg-slate-900/60 border border-slate-800/60 text-slate-400 px-1.5 py-0.5 rounded text-[10px] font-mono">
-                  {cand.years_of_experience} yrs
-                </span>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {[
+                  { label: "Role", value: cand.role_fit_percent },
+                  { label: "Skills", value: cand.skill_fit_percent },
+                  { label: "Semantic", value: cand.semantic_fit_percent },
+                ].map((m) => (
+                  <div key={m.label} className="rounded-lg bg-slate-950/50 py-1.5 px-1">
+                    <div className={`text-xs font-semibold tabular-nums ${fitColorClass(m.value)}`}>{m.value}%</div>
+                    <div className="text-[9px] text-slate-600 uppercase tracking-wide">{m.label}</div>
+                  </div>
+                ))}
               </div>
             </button>
           );
