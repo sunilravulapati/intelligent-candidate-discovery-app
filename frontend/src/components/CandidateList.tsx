@@ -37,7 +37,6 @@ export default function CandidateList({
       `"${c.name}"`,
       `"${c.current_title || c.headline || ""}"`,
       `"${c.current_company || ""}"`,
-      `"${c.location || ""}"`,
       scorePercent(c.overall_score),
       getMatchTier(c.overall_score),
       c.years_of_experience
@@ -88,7 +87,7 @@ export default function CandidateList({
                 isSelected
                   ? "bg-indigo-500/10 ring-1 ring-indigo-500/40 shadow-lg shadow-indigo-500/5"
                   : isTop
-                  ? "bg-gradient-to-br from-amber-500/[0.06] to-transparent ring-1 ring-amber-500/20 hover:ring-amber-500/35"
+                  ? "bg-gradient-to-br from-violet-500/[0.06] to-transparent ring-1 ring-violet-500/20 hover:ring-violet-500/35"
                   : "bg-slate-900/30 hover:bg-slate-800/40 ring-1 ring-white/[0.04] hover:ring-white/[0.08]"
               }`}
             >
@@ -102,7 +101,7 @@ export default function CandidateList({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className={`font-semibold text-sm truncate ${isTop ? "text-amber-50" : "text-slate-100"}`}>
+                    <div className={`font-semibold text-sm truncate ${isTop ? "text-violet-50" : "text-slate-100"}`}>
                       {cand.name}
                     </div>
                     {rank <= 3 && (

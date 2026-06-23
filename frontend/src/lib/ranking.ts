@@ -43,8 +43,9 @@ export function getMatchTier(score: number): string {
   if (pct >= 90) return "Elite Match";
   if (pct >= 80) return "Strong Match";
   if (pct >= 70) return "Good Match";
-  if (pct >= 60) return "Moderate Match";
-  return "Potential Match";
+  if (pct >= 60) return "Qualified Match";
+  if (pct >= 50) return "Consider";
+  return "Weak Match";
 }
 
 export function getMatchTierColor(score: number): string {
@@ -52,6 +53,7 @@ export function getMatchTierColor(score: number): string {
   if (pct >= 90) return "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20";
   if (pct >= 80) return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
   if (pct >= 70) return "bg-indigo-500/10 text-indigo-400 border-indigo-500/20";
-  if (pct >= 60) return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  if (pct >= 60) return "bg-violet-500/10 text-violet-400 border-violet-500/20";
+  if (pct >= 50) return "bg-amber-500/10 text-amber-400 border-amber-500/20";
   return "bg-slate-500/10 text-slate-400 border-slate-500/20";
 }

@@ -75,22 +75,18 @@ export default function CandidateDetail({ candidate, queryTitle }: CandidateDeta
   const requestedSkillCount = matched.length + missing.length;
   const generatedInsights = [
     candidate.role_fit_percent >= 80
-      ? `Strong alignment with ${queryTitle || "role"} requirements.`
-      : candidate.role_fit_percent >= 50
-      ? `Moderate alignment with ${queryTitle || "role"} requirements.`
-      : `Needs further evaluation for ${queryTitle || "role"} alignment.`,
+      ? `Strong alignment with ${queryTitle ? queryTitle.toLowerCase() : "role"} requirements.`
+      : candidate.role_fit_percent >= 60
+      ? `Moderate alignment with ${queryTitle ? queryTitle.toLowerCase() : "role"} requirements.`
+      : `Needs further evaluation for ${queryTitle ? queryTitle.toLowerCase() : "role"} alignment.`,
     
-    requestedSkillCount > 0
-      ? `Matches ${matched.length} of ${requestedSkillCount} required technologies.`
+    matched.length > 0
+      ? `Matches ${matched.slice(0, 3).join(", ")}${matched.length > 3 ? " and other" : ""} requirements.`
+      : requestedSkillCount > 0
+      ? "Missing core technical requirements."
       : "No specific technical constraints provided in query.",
       
-    `${candidate.years_of_experience}+ years of relevant industry experience.`,
-    
-    candidate.semantic_fit_percent >= 80
-      ? "High semantic similarity to the detailed role description."
-      : candidate.semantic_fit_percent >= 50
-      ? "Solid semantic overlap with core responsibilities."
-      : "Baseline semantic match; recommend deeper interview screening."
+    `Demonstrates relevant industry experience and ${candidate.semantic_fit_percent >= 70 ? "strong" : "baseline"} role similarity.`
   ];
   const reasons = candidate.ranking_reasons?.length ? candidate.ranking_reasons : generatedInsights;
 
@@ -211,16 +207,22 @@ export default function CandidateDetail({ candidate, queryTitle }: CandidateDeta
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Recruiter Actions
                 </h3>
-                <div className="flex items-center gap-2 text-sm text-slate-300">
-                  <span className={`w-2 h-2 rounded-full ${
-                    currentWorkflow.status === "saved" ? "bg-indigo-400" :
-                    currentWorkflow.status === "shortlisted" ? "bg-emerald-400" : "bg-rose-400"
-                  }`} />
-                  <span className="capitalize">{currentWorkflow.status}</span>
-                  <span className="text-slate-500">•</span>
-                  <span className="text-slate-500">
-                    {new Date(currentWorkflow.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                <div className="flex flex-col gap-2 text-sm text-slate-300">
+                  {(currentWorkflow.history || [{action: currentWorkflow.status, timestamp: currentWorkflow.timestamp}]).map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${
+                        item.action === "saved" ? "bg-indigo-400" :
+                        item.action === "shortlisted" ? "bg-emerald-400" : "bg-rose-400"
+                      }`} />
+                      <span className="capitalize font-medium">
+                        {item.action === "saved" ? "Saved" : item.action === "shortlisted" ? "Shortlisted" : "Rejected"}
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-slate-500">
+                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </section>
             )}

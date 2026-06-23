@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Redrob Discovery",
+  title: "TalentLens",
   description: "AI-Powered Candidate Intelligence for recruiters.",
 };
 

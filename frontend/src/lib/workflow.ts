@@ -7,11 +7,12 @@ export type WorkflowAction = "saved" | "shortlisted" | "rejected";
 export interface WorkflowRecord {
   status: WorkflowAction;
   timestamp: number;
+  history?: { action: WorkflowAction; timestamp: number }[];
 }
 
 export type CandidateWorkflowState = Record<string, WorkflowRecord>;
 
-const CANDIDATE_WORKFLOW_KEY = "redrob.discovery.candidateWorkflow.v2";
+const CANDIDATE_WORKFLOW_KEY = "talentlens.discovery.candidateWorkflow.v2";
 
 function getInitialState(): CandidateWorkflowState {
   if (typeof window === "undefined") return {};
@@ -50,7 +51,11 @@ export function useCandidateWorkflow() {
       if (status === null || next[candidateId]?.status === status) {
         delete next[candidateId];
       } else {
-        next[candidateId] = { status, timestamp: Date.now() };
+        const now = Date.now();
+        const prev = next[candidateId];
+        const history = prev?.history ? [...prev.history] : prev ? [{ action: prev.status, timestamp: prev.timestamp }] : [];
+        history.push({ action: status, timestamp: now });
+        next[candidateId] = { status, timestamp: now, history };
       }
       if (typeof window !== "undefined") {
         window.localStorage.setItem(CANDIDATE_WORKFLOW_KEY, JSON.stringify(next));

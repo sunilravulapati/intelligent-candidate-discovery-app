@@ -5,14 +5,14 @@ import { useEffect, useRef, useState } from "react";
 
 const DEMO_LINES = [
   { delay: 0,    text: '> searching 2.4M candidate profiles...',    color: '#6B7280' },
-  { delay: 600,  text: '✓ vector index queried in 38ms',            color: '#F59E0B' },
-  { delay: 1100, text: '✓ 847 semantic matches found',              color: '#F59E0B' },
+  { delay: 600,  text: '✓ vector index queried in 38ms',            color: '#7c3aed' },
+  { delay: 1100, text: '✓ 847 semantic matches found',              color: '#7c3aed' },
   { delay: 1700, text: '> running ML ranking pipeline...',          color: '#6B7280' },
-  { delay: 2300, text: '✓ XGBoost scores computed',                 color: '#F59E0B' },
+  { delay: 2300, text: '✓ XGBoost scores computed',                 color: '#7c3aed' },
   { delay: 2800, text: '',                                           color: '' },
   { delay: 2900, text: '─── top match ───────────────────',         color: '#374151' },
   { delay: 3000, text: 'Priya Sharma  •  Sr. ML Engineer',          color: '#F1F5F9' },
-  { delay: 3200, text: 'Match score    ████████░░  82%',            color: '#F59E0B' },
+  { delay: 3200, text: 'Match score    ████████░░  82%',            color: '#7c3aed' },
   { delay: 3400, text: 'Skills         Python · PyTorch · AWS',     color: '#94A3B8' },
   { delay: 3600, text: 'Experience     6 yrs  •  ₹28L current',     color: '#94A3B8' },
   { delay: 3800, text: 'Notice period  30 days',                    color: '#94A3B8' },
@@ -41,7 +41,7 @@ function TerminalCard() {
       fontSize: '12.5px',
       lineHeight: '1.7',
       overflow: 'hidden',
-      boxShadow: '0 0 0 1px rgba(245,158,11,0.06), 0 24px 48px rgba(0,0,0,0.5)',
+      boxShadow: '0 0 0 1px rgba(124,58,237,0.06), 0 24px 48px rgba(0,0,0,0.5)',
     }}>
       {/* titlebar */}
       <div style={{
@@ -70,7 +70,7 @@ function TerminalCard() {
             display: 'inline-block',
             width: '8px',
             height: '14px',
-            background: '#F59E0B',
+            background: '#7c3aed',
             animation: 'blink 1s step-end infinite',
             verticalAlign: 'text-bottom',
           }} />
@@ -107,8 +107,8 @@ export default function Home() {
         .stat-item:nth-child(2){animation-delay:0.5s}
         .stat-item:nth-child(3){animation-delay:0.6s}
         .stat-item:nth-child(4){animation-delay:0.7s}
-        .feature-card:hover { border-color: rgba(245,158,11,0.3) !important; }
-        .cta-primary:hover { background: #D97706 !important; }
+        .feature-card:hover { border-color: rgba(124,58,237,0.3) !important; }
+        .cta-primary:hover { background: #6d28d9 !important; }
         .cta-secondary:hover { border-color: #4B5563 !important; color: #F1F5F9 !important; }
         @media(max-width:900px){
           .hero-grid { flex-direction: column !important; }
@@ -129,7 +129,7 @@ export default function Home() {
       <div style={{
         position: 'fixed', top: '-20%', right: '-10%',
         width: '600px', height: '600px',
-        background: 'radial-gradient(circle, rgba(245,158,11,0.06) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%)',
         zIndex: 0, pointerEvents: 'none',
       }} />
 
@@ -142,11 +142,11 @@ export default function Home() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <rect x="1" y="1" width="20" height="20" rx="5" fill="#F59E0B" />
+            <rect x="1" y="1" width="20" height="20" rx="5" fill="#7c3aed" />
             <path d="M6 15l4-8 3 5 2-3 1 2" stroke="#0D1117" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.02em', color: '#F1F5F9' }}>
-            Redrob Discovery
+            TalentLens
           </span>
         </div>
 
@@ -159,7 +159,7 @@ export default function Home() {
         <Link
           href="/dashboard"
           style={{
-            background: '#F59E0B',
+            background: '#7c3aed',
             color: '#0D1117',
             fontWeight: 600,
             fontSize: '13px',
@@ -189,18 +189,18 @@ export default function Home() {
         <div style={{ flex: '1 1 0', minWidth: 0 }} className="hero-left">
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '8px',
-            background: 'rgba(245,158,11,0.1)',
-            border: '1px solid rgba(245,158,11,0.2)',
+            background: 'rgba(124,58,237,0.1)',
+            border: '1px solid rgba(124,58,237,0.2)',
             borderRadius: '20px',
             padding: '5px 14px',
             fontSize: '11px',
             fontWeight: 600,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: '#F59E0B',
+            color: '#7c3aed',
             marginBottom: '28px',
           }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', display: 'inline-block', animation: 'blink 2s step-end infinite' }} />
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c3aed', display: 'inline-block', animation: 'blink 2s step-end infinite' }} />
             AI-Powered Candidate Intelligence
           </div>
 
@@ -213,7 +213,7 @@ export default function Home() {
             color: '#F1F5F9',
           }}>
             Find the right hire<br />
-            <span style={{ color: '#F59E0B' }}>in minutes,</span><br />
+            <span style={{ color: '#7c3aed' }}>in minutes,</span><br />
             not weeks.
           </h1>
 
@@ -224,7 +224,7 @@ export default function Home() {
             maxWidth: '480px',
             margin: '0 0 40px',
           }}>
-            Redrob Discovery searches millions of candidate profiles using vector similarity and ML ranking — so you spend your time on conversations, not spreadsheets.
+            TalentLens searches millions of candidate profiles using vector similarity and ML ranking — so you spend your time on conversations, not spreadsheets.
           </p>
 
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -232,7 +232,7 @@ export default function Home() {
               href="/dashboard"
               id="enter-dashboard-cta"
               style={{
-                background: '#F59E0B',
+                background: '#7c3aed',
                 color: '#0D1117',
                 fontWeight: 700,
                 fontSize: '14px',
@@ -321,8 +321,8 @@ export default function Home() {
             {
               icon: (
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <circle cx="9" cy="9" r="6" stroke="#F59E0B" strokeWidth="1.5" />
-                  <path d="M13.5 13.5l3 3" stroke="#F59E0B" strokeWidth="1.8" strokeLinecap="round" />
+                  <circle cx="9" cy="9" r="6" stroke="#7c3aed" strokeWidth="1.5" />
+                  <path d="M13.5 13.5l3 3" stroke="#7c3aed" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
               ),
               label: '01',
@@ -332,9 +332,9 @@ export default function Home() {
             {
               icon: (
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <rect x="3" y="13" width="3" height="4" rx="1" fill="#F59E0B" />
-                  <rect x="8.5" y="9" width="3" height="8" rx="1" fill="#F59E0B" opacity=".6" />
-                  <rect x="14" y="5" width="3" height="12" rx="1" fill="#F59E0B" opacity=".3" />
+                  <rect x="3" y="13" width="3" height="4" rx="1" fill="#7c3aed" />
+                  <rect x="8.5" y="9" width="3" height="8" rx="1" fill="#7c3aed" opacity=".6" />
+                  <rect x="14" y="5" width="3" height="12" rx="1" fill="#7c3aed" opacity=".3" />
                 </svg>
               ),
               label: '02',
@@ -344,7 +344,7 @@ export default function Home() {
             {
               icon: (
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M4 10h12M10 4l6 6-6 6" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4 10h12M10 4l6 6-6 6" stroke="#7c3aed" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ),
               label: '03',
@@ -376,7 +376,7 @@ export default function Home() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         maxWidth: '1200px', margin: '0 auto',
       }}>
-        <span style={{ fontSize: '12px', color: '#374151' }}>© 2024 Redrob Discovery · AI-Powered Candidate Intelligence</span>
+        <span style={{ fontSize: '12px', color: '#374151' }}>© 2024 TalentLens · AI-Powered Candidate Intelligence</span>
         <span style={{ fontSize: '12px', color: '#374151' }}>Powered by dense vector embeddings + XGBoost</span>
       </div>
     </div>

@@ -324,7 +324,7 @@ export default function Dashboard() {
               </svg>
             </div>
             <div>
-              <h1 className="text-base font-semibold text-white tracking-tight">Redrob Discovery</h1>
+              <h1 className="text-base font-semibold text-white tracking-tight">TalentLens</h1>
               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">AI-Powered Candidate Intelligence</p>
             </div>
           </div>
@@ -371,7 +371,7 @@ export default function Dashboard() {
           />
         )}
 
-        <AnalyticsCards metrics={metrics} hasSearched={hasSearched && candidates.length > 0} />
+        <AnalyticsCards metrics={metrics} hasSearched={hasSearched && candidates.length > 0} bestScore={candidates[0]?.overall_score} />
 
         {showEmptyResults ? (
           <div className="flex-1 flex flex-col items-center justify-center py-20 text-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01]">
@@ -422,26 +422,53 @@ export default function Dashboard() {
                     </svg>
                   </div>
                   <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">Find the Best Candidate</h2>
-                  <p className="text-slate-400 max-w-md mx-auto leading-relaxed text-sm">
-                    Enter a role title, job description, and required skills. AI-powered semantic ranking will identify the most relevant candidates instantly.
+                  <p className="text-slate-400 max-w-md mx-auto leading-relaxed text-sm mb-4">
+                    AI-powered semantic ranking across nearly 100k candidate profiles.<br/>
+                    Enter a role description to begin.
                   </p>
                   
-                  {searchHistory.length > 0 && (
-                    <div className="mt-10 w-full text-left">
-                      <h3 className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3 border-b border-white/[0.06] pb-2">Recent Searches</h3>
+                  <div className="mt-8 w-full text-left grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <h3 className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3 border-b border-white/[0.06] pb-2">Example Searches</h3>
                       <div className="flex flex-wrap gap-2">
-                        {searchHistory.map(h => (
+                        {[
+                          { title: "Frontend Lead", desc: "React expert with 5+ years building scalable UI architectures.", skills: "React, TypeScript, Redux" },
+                          { title: "Machine Learning Engineer", desc: "NLP and computer vision specialist with production model deployment.", skills: "Python, PyTorch, AWS" }
+                        ].map((ex, i) => (
                           <button
-                            key={h.id}
-                            onClick={() => applyHistoryItem(h)}
-                            className="bg-slate-900/60 border border-white/[0.08] hover:border-indigo-500/50 hover:bg-indigo-500/10 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                            key={i}
+                            onClick={() => {
+                              setQueryTitle(ex.title);
+                              setQueryDescription(ex.desc);
+                              setQuerySkillsText(ex.skills);
+                            }}
+                            className="bg-slate-900/60 border border-white/[0.08] hover:border-indigo-500/50 hover:bg-indigo-500/10 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer text-left w-full"
                           >
-                            {h.queryTitle}
+                            <div className="font-semibold">{ex.title}</div>
+                            <div className="text-[10px] text-slate-500 mt-0.5 truncate">{ex.skills}</div>
                           </button>
                         ))}
                       </div>
                     </div>
-                  )}
+
+                    {searchHistory.length > 0 && (
+                      <div>
+                        <h3 className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3 border-b border-white/[0.06] pb-2">Recent Searches</h3>
+                        <div className="flex flex-col gap-2">
+                          {searchHistory.map(h => (
+                            <button
+                              key={h.id}
+                              onClick={() => applyHistoryItem(h)}
+                              className="bg-slate-900/60 border border-white/[0.08] hover:border-indigo-500/50 hover:bg-indigo-500/10 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer text-left w-full"
+                            >
+                              <div className="font-semibold">{h.queryTitle}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5 truncate">{h.querySkillsText}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -454,7 +481,7 @@ export default function Dashboard() {
       )}
 
       <footer className="border-t border-white/[0.04] py-4 text-center text-[11px] text-slate-600">
-        Redrob Discovery · AI-Powered Candidate Intelligence
+        TalentLens · AI-Powered Candidate Intelligence
       </footer>
     </div>
   );

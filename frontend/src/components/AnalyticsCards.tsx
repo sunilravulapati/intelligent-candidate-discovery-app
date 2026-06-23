@@ -6,9 +6,10 @@ import { SearchMetrics } from "@/lib/api";
 interface AnalyticsCardsProps {
   metrics: SearchMetrics | null;
   hasSearched?: boolean;
+  bestScore?: number;
 }
 
-export default function AnalyticsCards({ metrics, hasSearched = false }: AnalyticsCardsProps) {
+export default function AnalyticsCards({ metrics, hasSearched = false, bestScore = 0 }: AnalyticsCardsProps) {
   if (!hasSearched || !metrics?.retrieval_pool_size) {
     return null;
   }
@@ -22,17 +23,17 @@ export default function AnalyticsCards({ metrics, hasSearched = false }: Analyti
 
   const stats = [
     {
-      label: "Candidates Analyzed",
+      label: "Talent Pool Evaluated",
       value: metrics.retrieval_pool_size.toLocaleString(),
       sub: `From pool of ${metrics.candidates_indexed.toLocaleString()}`,
     },
     {
-      label: "Avg Match Quality",
-      value: `${Math.round(metrics.avg_match_score * 100)}%`,
+      label: "Best Candidate Score",
+      value: `${Math.round((bestScore || metrics.avg_match_score) * 100)}%`,
       sub: metrics.retrieval_mode === "semantic" ? "AI Semantic Search" : "Keyword Fallback",
     },
     {
-      label: "Total Search Time",
+      label: "Search Duration",
       value: `${metrics.total_time_ms}ms`,
       sub: "End-to-end execution",
     },
@@ -52,7 +53,7 @@ export default function AnalyticsCards({ metrics, hasSearched = false }: Analyti
       ))}
 
       <div className="rounded-xl border border-white/[0.08] bg-slate-900/40 p-5 shadow-lg shadow-black/20">
-        <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3">Pipeline Performance</p>
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3">AI Ranking Pipeline</p>
         <div className="space-y-2 text-[11px] font-medium">
           <div className="flex justify-between items-center">
             <span className="text-slate-400 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-violet-500" />Embedding</span>
