@@ -22,19 +22,19 @@ export default function AnalyticsCards({ metrics, hasSearched = false }: Analyti
 
   const stats = [
     {
-      label: "Candidates Retrieved",
+      label: "Candidates Analyzed",
       value: metrics.retrieval_pool_size.toLocaleString(),
-      sub: `${metrics.candidates_indexed.toLocaleString()} indexed`,
+      sub: `From pool of ${metrics.candidates_indexed.toLocaleString()}`,
     },
     {
-      label: "Average Match Score",
+      label: "Avg Match Quality",
       value: `${Math.round(metrics.avg_match_score * 100)}%`,
-      sub: metrics.retrieval_mode === "semantic" ? "Semantic mode" : "Keyword mode",
+      sub: metrics.retrieval_mode === "semantic" ? "AI Semantic Search" : "Keyword Fallback",
     },
     {
-      label: "End-to-End Search",
+      label: "Total Search Time",
       value: `${metrics.total_time_ms}ms`,
-      sub: `Embedding ${embeddingMs}ms (${cacheState})`,
+      sub: "End-to-end execution",
     },
   ];
 
@@ -43,31 +43,31 @@ export default function AnalyticsCards({ metrics, hasSearched = false }: Analyti
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl px-5 py-4"
+          className="rounded-xl border border-white/[0.08] bg-slate-900/40 p-5 shadow-lg shadow-black/20"
         >
           <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">{stat.label}</p>
           <p className="text-2xl font-bold text-white tabular-nums mt-1 tracking-tight">{stat.value}</p>
-          <p className="text-[10px] text-slate-600 mt-0.5">{stat.sub}</p>
+          <p className="text-[11px] text-indigo-300/80 mt-1 font-medium">{stat.sub}</p>
         </div>
       ))}
 
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl px-5 py-4">
-        <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Pipeline Timing</p>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 text-[10px]">
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-500">Embedding</span>
-            <span className="text-slate-200 tabular-nums">{embeddingMs}ms</span>
+      <div className="rounded-xl border border-white/[0.08] bg-slate-900/40 p-5 shadow-lg shadow-black/20">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3">Pipeline Performance</p>
+        <div className="space-y-2 text-[11px] font-medium">
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-violet-500" />Embedding</span>
+            <span className="text-slate-200 tabular-nums">{embeddingMs}ms <span className="text-slate-500 font-normal ml-1">({cacheState === "cache hit" ? "cached" : "computed"})</span></span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-500">FAISS</span>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />Semantic Retrieval</span>
             <span className="text-slate-200 tabular-nums">{faissMs}ms</span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-500">Ranking</span>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Ranking</span>
             <span className="text-slate-200 tabular-nums">{rankingMs}ms</span>
           </div>
-          <div className="flex justify-between gap-2">
-            <span className="text-slate-500">Explain</span>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Insights</span>
             <span className="text-slate-200 tabular-nums">{explainabilityMs}ms</span>
           </div>
         </div>

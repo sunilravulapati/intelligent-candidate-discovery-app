@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Redrob Intelligent Discovery",
-  description: "Recruiter workspace for semantic candidate discovery and transparent ranking.",
+  title: "Redrob Discovery",
+  description: "AI-Powered Candidate Intelligence for recruiters.",
 };
+
+import { ToastContainer } from "@/components/Toast";
 
 export default function RootLayout({
   children,
@@ -19,6 +21,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
+        <ToastContainer />
       </body>
     </html>
   );

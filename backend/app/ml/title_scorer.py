@@ -250,6 +250,53 @@ class TitleAlignmentScorer:
         )
         return round(min(max(raw, 0.0), 1.0), 4)
 
+    def score_precomputed(
+        self,
+        job_tok: Set[str],
+        job_family: Optional[str],
+        job_tier: int,
+        cand_tok: Set[str],
+        cand_family: Optional[str],
+        cand_tier: int,
+    ) -> float:
+        """
+        Compute a normalized [0, 1] alignment score using precomputed tokens, family, and tier.
+        """
+        # ── Signal 1: token Jaccard ─────────────────────────────────────────
+        jaccard = _jaccard(job_tok, cand_tok)
+
+        # ── Signal 2: role-family category match ────────────────────────────
+        if job_family is None or cand_family is None:
+            # Cannot determine family — fall back to Jaccard only
+            family_score = jaccard
+        elif job_family == cand_family:
+            family_score = 1.0
+        elif cand_family in _adjacent_families(job_family):
+            # Partial credit for adjacent families
+            family_score = 0.55
+        else:
+            # Conflicting role families — penalise shared generic tokens (e.g. "engineer")
+            family_score = 0.0
+            jaccard = min(jaccard, 0.15)
+
+        # ── Signal 3: seniority tier alignment ──────────────────────────────
+        if job_tier == -1 or cand_tier == -1:
+            seniority_score = 0.5  # unknown → neutral
+        elif job_tier == cand_tier:
+            seniority_score = 1.0
+        elif abs(job_tier - cand_tier) == 1:
+            seniority_score = 0.5
+        else:
+            seniority_score = 0.0
+
+        # ── Blend ────────────────────────────────────────────────────────────
+        raw = (
+            self._W_JACCARD   * jaccard
+            + self._W_FAMILY    * family_score
+            + self._W_SENIORITY * seniority_score
+        )
+        return round(min(max(raw, 0.0), 1.0), 4)
+
     def score_candidate(
         self, job_title: str, candidate: Dict
     ) -> Tuple[float, str]:

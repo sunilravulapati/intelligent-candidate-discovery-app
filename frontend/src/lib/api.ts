@@ -175,9 +175,12 @@ export interface HealthStatus {
   };
   startup_status?: {
     cache_loaded: boolean;
-    faiss_loaded: boolean;
+    index_loaded: boolean;
     model_loaded: boolean;
+    ranking_loaded: boolean;
     ready: boolean;
+    startup_time_ms: number;
+    timing_breakdown?: Record<string, number>;
   };
 }
 

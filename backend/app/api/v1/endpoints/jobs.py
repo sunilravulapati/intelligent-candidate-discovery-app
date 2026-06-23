@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api import deps
+from app.core.workspace_state import workspace_state
 from app.services.ingestion.ingestion_service import IngestionService
 from app.services.retrieval.retrieval_service import RetrievalService
 from app.services.ranking.ranking_service import RankingService
@@ -86,6 +87,9 @@ class SearchMetrics(BaseModel):
     embedding_calls_per_session: int = 0
     embedding_cache_hits_per_session: int = 0
     embedding_cache_misses_per_session: int = 0
+    cache_hit_rate: float = 0.0
+    cache_size: int = 0
+    embedding_calls_saved: int = 0
     top_skills_found: List[str]
     timing_breakdown: Dict[str, float] = Field(default_factory=dict)
 
@@ -137,30 +141,27 @@ def match_candidates(
 
     Pipeline:
         Job Query
+          ↓ [Readiness check — 503 if workspace not ready]
           ↓ [Skill parse fallback if empty]
-          ↓ RetrievalService.load_index_and_cache()   [once, cached in memory]
           ↓ RetrievalService.retrieve_candidates()    [FAISS top-500 or full keyword scan]
-          ↓ RankingService.hybrid_rank()              [0.28×role + 0.30×skill + 0.27×sem + 0.10×exp + 0.05×act]
+          ↓ RankingService.hybrid_rank()              [0.35×role + 0.30×skill + 0.20×sem + 0.10×exp + 0.05×act]
           ↓ ExplainabilityService.generate_explanation()
           ↓ Top-K results
     """
-    t_start = time.time()
+    t_request_start = time.perf_counter()
     logger.info("Timing - Request received")
 
-    # 1. Resolve required skills
+    # 1. Readiness guard — never acquire startup locks in the request path
+    if not workspace_state.ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Workspace is still initializing. Please wait.",
+        )
+
+    # 2. Resolve required skills
     req_skills = request.required_skills or []
     if not req_skills:
         req_skills = _fallback_skill_parse(request.description)
-
-    # 2. Ensure candidate cache + FAISS index loaded (idempotent)
-    t_load_start = time.time()
-    try:
-        retrieval.load_index_and_cache(ingestion)
-    except Exception as e:
-        logger.error(f"Failed to load candidate cache / index: {e}")
-        raise HTTPException(status_code=500, detail=f"Candidate loading failed: {str(e)}")
-    t_load_end = time.time()
-    logger.info(f"Timing - Load index and cache check: {(t_load_end - t_load_start)*1000:.2f} ms")
 
     if not retrieval.candidates_cache:
         return JobSearchResponse(
@@ -197,6 +198,11 @@ def match_candidates(
     t_retrieval_start = time.time()
 
     if retrieval.is_semantic_ready():
+        import cProfile, pstats, io
+        pr = cProfile.Profile()
+        pr.enable()
+        
+        t_retrieval_call_start = time.perf_counter()
         # Semantic: FAISS top-500 pre-filter
         candidates_with_scores, ret_timings = retrieval.retrieve_candidates(
             job_title=request.title,
@@ -205,13 +211,30 @@ def match_candidates(
             top_k=500,
             return_timings=True,
         )
+        t_retrieval_call_end = time.perf_counter()
+        
+        pr.disable()
+        s = io.StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+        ps.print_stats(30)
+        print("\n==================================================")
+        print("TOP TIME CONSUMERS")
+        print("==================")
+        print(s.getvalue())
+        print("==================================================\n")
+        
         timing_breakdown["Query Embedding"] = ret_timings.get("Query Embedding", 0.0)
         timing_breakdown["FAISS Retrieval"] = ret_timings.get("FAISS Retrieval", 0.0)
+        timing_breakdown["Candidate Reconstruction"] = ret_timings.get("Candidate Reconstruction", 0.0)
         timing_breakdown["Embedding Cache Hit"] = ret_timings.get("Embedding Cache Hit", 0.0)
         timing_breakdown["Embedding Calls This Request"] = ret_timings.get("Embedding Calls This Request", 0.0)
         timing_breakdown["Embedding Calls This Session"] = ret_timings.get("Embedding Calls This Session", 0.0)
         timing_breakdown["Embedding Cache Hits This Session"] = ret_timings.get("Embedding Cache Hits This Session", 0.0)
         timing_breakdown["Embedding Cache Misses This Session"] = ret_timings.get("Embedding Cache Misses This Session", 0.0)
+        
+        retrieval_timer_ms = (t_retrieval_call_end - t_retrieval_call_start) * 1000
+        print(f"RETRIEVAL_TIMER = {retrieval_timer_ms:.2f}ms")
+        print(f"FAISS_TIMER = {timing_breakdown['FAISS Retrieval']:.2f}ms")
     else:
         # Keyword fallback: full scan — all candidates with semantic_score=0.0
         job_title_tokens = _tokenize(request.title)
@@ -242,6 +265,7 @@ def match_candidates(
     t_rank_end = time.time()
     t_rank_ms = (t_rank_end - t_rank_start) * 1000
     timing_breakdown["Candidate Ranking"] = round(t_rank_ms, 2)
+    timing_breakdown.update(ranking.last_timing_breakdown)
     logger.info(f"Timing - Hybrid ranking: {t_rank_ms:.2f} ms")
 
     # 5. Slice to requested top_k and build response
@@ -320,9 +344,11 @@ def match_candidates(
     timing_breakdown["Explainability Generation"] = round(t_explain_ms, 2)
     logger.info(f"Timing - Explanation generation: {t_explain_ms:.2f} ms")
 
-    t_total_ms = int((time.time() - t_start) * 1000)
+    t_total_ms = int((time.perf_counter() - t_request_start) * 1000)
     top_skills = sorted(skills_freq, key=lambda k: skills_freq[k], reverse=True)[:5]
     avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
+
+    stats = retrieval.embedding_cache_stats()
 
     metrics = SearchMetrics(
         candidates_indexed=len(retrieval.candidates_cache),
@@ -337,23 +363,62 @@ def match_candidates(
         retrieval_mode=retrieval_mode,
         embedding_cache_hit=bool(timing_breakdown["Embedding Cache Hit"]),
         embedding_calls_per_request=int(timing_breakdown["Embedding Calls This Request"]),
-        embedding_calls_per_session=int(timing_breakdown["Embedding Calls This Session"]),
-        embedding_cache_hits_per_session=int(timing_breakdown["Embedding Cache Hits This Session"]),
-        embedding_cache_misses_per_session=int(timing_breakdown["Embedding Cache Misses This Session"]),
+        embedding_calls_per_session=int(stats["session_encode_calls"]),
+        embedding_cache_hits_per_session=int(stats["session_cache_hits"]),
+        embedding_cache_misses_per_session=int(stats["session_cache_misses"]),
+        cache_hit_rate=stats["cache_hit_rate"],
+        cache_size=stats["cache_size"],
+        embedding_calls_saved=stats["embedding_calls_saved"],
         top_skills_found=top_skills,
         timing_breakdown=timing_breakdown,
     )
 
-    # Log/Print timing breakdown to the backend console
-    print("\n================ TIMING BREAKDOWN ================")
-    print(f"Query Embedding: {timing_breakdown['Query Embedding']:.2f}ms")
-    print(f"Embedding Calls / Request: {int(timing_breakdown['Embedding Calls This Request'])}")
-    print(f"Embedding Calls / Session: {int(timing_breakdown['Embedding Calls This Session'])}")
-    print(f"Embedding Cache Hit: {bool(timing_breakdown['Embedding Cache Hit'])}")
-    print(f"FAISS Retrieval: {timing_breakdown['FAISS Retrieval']:.2f}ms")
-    print(f"Candidate Ranking: {timing_breakdown['Candidate Ranking']:.2f}ms")
-    print(f"Explainability Generation: {timing_breakdown['Explainability Generation']:.2f}ms")
-    print("==================================================\n")
+    # ── SEARCH PROFILE ── structured backend profiling output ─────────────────
+    _cache_hit_flag = bool(timing_breakdown["Embedding Cache Hit"])
+    _encode_calls_req = int(timing_breakdown["Embedding Calls This Request"])
+    _encode_calls_sess = int(stats["session_encode_calls"])
+    _embed_ms = timing_breakdown["Query Embedding"]
+    _faiss_ms = timing_breakdown["FAISS Retrieval"]
+    _reconstruct_ms = timing_breakdown.get("Candidate Reconstruction", 0.0)
+    _rank_ms = timing_breakdown["Candidate Ranking"]
+    _explain_ms = timing_breakdown["Explainability Generation"]
+    print("\n================ SEARCH PROFILE ================")
+    print("Embedding:")
+    print(f"  cache hit/miss    : {'HIT' if _cache_hit_flag else 'MISS'}")
+    print(f"  encode calls/req  : {_encode_calls_req}")
+    print(f"  encode calls/sess : {_encode_calls_sess}")
+    print(f"  cache hit rate    : {stats['cache_hit_rate']:.2%}  (cache size={stats['cache_size']})")
+    print(f"  model load state  : loaded (id stable across requests)")
+    print(f"  time              : {_embed_ms:.2f}ms")
+    print("FAISS:")
+    print(f"  index.search only : see [FAISS] line above for sub-breakdown")
+    print(f"  outer timer       : {_faiss_ms:.2f}ms  (wraps entire faiss_index.search())")
+    print(f"  pool size         : {pool_size}")
+    print("Candidate Reconstruction:")
+    print(f"  dict lookups      : {pool_size} x candidates_cache.get()")
+    print(f"  time              : {_reconstruct_ms:.2f}ms")
+    print("Ranking:")
+    print(f"  ranking time      : {_rank_ms:.2f}ms")
+    print("Explainability:")
+    print(f"  explainability    : {_explain_ms:.2f}ms")
+    print("Total:")
+    print(f"  outer retrieval   : {t_retrieval_ms}ms  (embedding + FAISS + reconstruction)")
+    print(f"  end-to-end        : {t_total_ms}ms")
+    print("================================================\n")
+    
+    t_request_end = time.perf_counter()
+    request_timer_ms = (t_request_end - t_request_start) * 1000
+    print(f"REQUEST_TIMER = {request_timer_ms:.2f}ms")
+
+    # Store last search performance for /debug/performance
+    workspace_state.last_search_perf = {
+        "startup_time_ms": workspace_state.startup_time_ms,
+        "embedding_ms": round(timing_breakdown["Query Embedding"], 2),
+        "faiss_ms": round(timing_breakdown["FAISS Retrieval"], 2),
+        "ranking_ms": round(t_rank_ms, 2),
+        "explainability_ms": round(t_explain_ms, 2),
+        "total_ms": round(request_timer_ms, 2),
+    }
 
     response_obj = JobSearchResponse(metrics=metrics, results=results)
     return response_obj

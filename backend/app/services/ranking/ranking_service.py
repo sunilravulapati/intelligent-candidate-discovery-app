@@ -210,9 +210,9 @@ def _match_required_skills(
 # Activity is gated by role+skill fit so it cannot lift unrelated profiles.
 
 DEFAULT_WEIGHTS: Dict[str, float] = {
-    "title_alignment":     0.28,  # Role Fit
+    "title_alignment":     0.35,  # Role Fit
     "skill_overlap":       0.30,  # Skill Fit
-    "semantic_similarity": 0.27,  # Semantic Fit
+    "semantic_similarity": 0.20,  # Semantic Fit
     "experience_match":    0.10,
     "activity_score":      0.05,
 }
@@ -242,6 +242,7 @@ class RankingService:
         self.ranker = CandidateRanker(model_path=settings.get_absolute_path(model_path))
         self.ranker.load_model()
         self._title_scorer = TitleAlignmentScorer()
+        self.last_timing_breakdown: Dict[str, float] = {}
 
     # ── Component scorers ────────────────────────────────────────
 
@@ -313,34 +314,108 @@ class RankingService:
         Returns:
             List of candidate dicts enriched with scoring fields, sorted by overall_score desc.
         """
+        import time
         w = weights or DEFAULT_WEIGHTS
 
-        ranked: List[Dict[str, Any]] = []
-        for cand, semantic_sim in candidates_with_scores:
-            skill_ratio, matched_skills, missed_skills = self._skill_overlap(required_skills, cand)
-            exp_match   = self._experience_match(cand)
-            act_score   = self._activity_score(cand)
-            title_align = self._title_alignment(job_title, cand)
+        # Precompute query-level parameters for title alignment
+        from app.ml.title_scorer import _tokenize, _family_of, _seniority_tier
+        job_tok = _tokenize(job_title)
+        job_family = _family_of(job_title)
+        job_tier = _seniority_tier(job_tok)
 
-            # Gate activity: poor role/skill fit cannot be boosted by engagement
+        # Precompute query-level parameters for skill matching
+        required_canonical_map = { _canonical(s): s for s in required_skills }
+        required_canonicals = set(required_canonical_map)
+        required_dynamic_canonicals = { c for c in required_canonical_map if c not in _SKILL_ALIASES }
+
+        # Cumulative timing buckets in milliseconds
+        t_title_alignment = 0.0
+        t_skill_match = 0.0
+        t_alias_resolution = 0.0
+        t_experience = 0.0
+        t_semantic = 0.0
+        t_aggregation = 0.0
+        t_sorting = 0.0
+
+        ranked: List[Dict[str, Any]] = []
+        t_rank_start = time.perf_counter()
+        for cand, semantic_sim in candidates_with_scores:
+            # 1. Title alignment (O(1) lookup + math)
+            t0 = time.perf_counter()
+            if "candidate_title_tokens" in cand:
+                title_align = self._title_scorer.score_precomputed(
+                    job_tok,
+                    job_family,
+                    job_tier,
+                    cand["candidate_title_tokens"],
+                    cand["candidate_title_family"],
+                    cand["candidate_title_tier"],
+                )
+            else:
+                title_align = self._title_alignment(job_title, cand)
+            t_title_alignment += (time.perf_counter() - t0) * 1000
+
+            # 2. Skill overlap (O(1) set intersections + dynamic search)
+            # We measure strategy 1 (explicit skill match) under skill_match,
+            # and strategy 2 (alias and dynamic skill text scans) under alias_resolution.
+            t0 = time.perf_counter()
+            if "candidate_explicit_skills" in cand:
+                matched_explicit = required_canonicals & cand["candidate_explicit_skills"]
+                t_skill_match += (time.perf_counter() - t0) * 1000
+
+                t0 = time.perf_counter()
+                matched_aliases = required_canonicals & cand["candidate_alias_skills"]
+
+                matched = matched_explicit | matched_aliases
+                for rc in required_dynamic_canonicals:
+                    if rc not in matched:
+                        if rc in cand["candidate_corpus"]:
+                            matched.add(rc)
+
+                matched_skills = [required_canonical_map[mc] for mc in matched]
+                missed_skills = [orig for mc, orig in required_canonical_map.items() if mc not in matched]
+
+                skill_ratio = len(matched_skills) / len(required_skills) if required_skills else 0.0
+                t_alias_resolution += (time.perf_counter() - t0) * 1000
+            else:
+                # Fallback to legacy path if cache is somehow not loaded/precomputed
+                skill_ratio, matched_skills, missed_skills = self._skill_overlap(required_skills, cand)
+                t_skill_match += (time.perf_counter() - t0) * 1000
+
+            # 3. Experience Scoring Time
+            t0 = time.perf_counter()
+            exp_match = cand.get("candidate_experience_match")
+            if exp_match is None:
+                exp_match = self._experience_match(cand)
+            t_experience += (time.perf_counter() - t0) * 1000
+
+            # 4. Semantic Score Calculation Time
+            t0 = time.perf_counter()
+            contrib_semantic = w.get("semantic_similarity", 0.0) * semantic_sim
+            t_semantic += (time.perf_counter() - t0) * 1000
+
+            # 5. Final Score Aggregation Time
+            t0 = time.perf_counter()
+            act_score = cand.get("candidate_activity_score")
+            if act_score is None:
+                act_score = self._activity_score(cand)
             fit_gate = min(1.0, (title_align * 0.55 + skill_ratio * 0.45))
             effective_act = act_score * fit_gate
 
             overall = min(
                 w.get("title_alignment",     0.0) * title_align
                 + w.get("skill_overlap",       0.0) * skill_ratio
-                + w.get("semantic_similarity", 0.0) * semantic_sim
+                + contrib_semantic
                 + w.get("experience_match",    0.0) * exp_match
                 + w.get("activity_score",      0.0) * effective_act,
                 1.0,
             )
 
-            # Component contributions (weight × raw_score)
-            contrib_title    = w.get("title_alignment",     0.0) * title_align
-            contrib_skill    = w.get("skill_overlap",       0.0) * skill_ratio
-            contrib_semantic = w.get("semantic_similarity", 0.0) * semantic_sim
-            contrib_exp      = w.get("experience_match",    0.0) * exp_match
-            contrib_act      = w.get("activity_score",      0.0) * effective_act
+            # Component contributions
+            contrib_title = w.get("title_alignment",     0.0) * title_align
+            contrib_skill = w.get("skill_overlap",       0.0) * skill_ratio
+            contrib_exp   = w.get("experience_match",    0.0) * exp_match
+            contrib_act   = w.get("activity_score",      0.0) * effective_act
 
             cand_copy = cand.copy()
             # Raw component scores
@@ -367,7 +442,10 @@ class RankingService:
             cand_copy["semantic_similarity_percent"] = int(semantic_sim * 100)
             cand_copy["title_alignment_percent"]   = int(title_align * 100)
             ranked.append(cand_copy)
+            t_aggregation += (time.perf_counter() - t0) * 1000
 
+        # 6. Sorting Time
+        t0 = time.perf_counter()
         # Sort: overall desc → role fit → skill fit → semantic → id (deterministic)
         ranked.sort(
             key=lambda x: (
@@ -378,6 +456,41 @@ class RankingService:
                 x["candidate_id"],
             )
         )
+        t_sorting += (time.perf_counter() - t0) * 1000
+        total_ranking_ms = (time.perf_counter() - t_rank_start) * 1000
+        self.last_timing_breakdown = {
+            "Title Alignment Time": round(t_title_alignment, 2),
+            "Skill Matching Time": round(t_skill_match, 2),
+            "Alias Resolution Time": round(t_alias_resolution, 2),
+            "Experience Scoring Time": round(t_experience, 2),
+            "Semantic Score Calculation Time": round(t_semantic, 2),
+            "Final Score Aggregation Time": round(t_aggregation, 2),
+            "Sorting Time": round(t_sorting, 2),
+            "Ranking Total Time": round(total_ranking_ms, 2),
+        }
+
+        # Log and Print cumulative ranking times
+        print("\n================ RANKING DETAILED TIMINGS ================")
+        print(f"Title Alignment: {t_title_alignment:.2f}ms")
+        print(f"Skill Match: {t_skill_match:.2f}ms")
+        print(f"Alias Resolution: {t_alias_resolution:.2f}ms")
+        print(f"Experience: {t_experience:.2f}ms")
+        print(f"Semantic Score Calc: {t_semantic:.2f}ms")
+        print(f"Final Score Aggregation: {t_aggregation:.2f}ms")
+        print(f"Sorting: {t_sorting:.2f}ms")
+        print("==========================================================\n")
+
+        logger.info(
+            "RANKING TIMING - Title Alignment: %.2fms | Skill Match: %.2fms | Alias Resolution: %.2fms | Experience: %.2fms | Semantic: %.2fms | Aggregation: %.2fms | Sorting: %.2fms",
+            t_title_alignment,
+            t_skill_match,
+            t_alias_resolution,
+            t_experience,
+            t_semantic,
+            t_aggregation,
+            t_sorting,
+        )
+
         return ranked[:top_k]
 
     # ── Legacy XGBoost path (kept for compatibility) ─────────────

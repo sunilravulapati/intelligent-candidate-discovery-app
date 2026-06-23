@@ -10,6 +10,7 @@ interface SearchSummaryHeaderProps {
   metrics: SearchMetrics | null;
   resultCount: number;
   onRefine: () => void;
+  onCompare?: () => void;
 }
 
 export default function SearchSummaryHeader({
@@ -19,6 +20,7 @@ export default function SearchSummaryHeader({
   metrics,
   resultCount,
   onRefine,
+  onCompare,
 }: SearchSummaryHeaderProps) {
   const retrievalLabel =
     metrics?.retrieval_mode === "semantic"
@@ -96,6 +98,18 @@ export default function SearchSummaryHeader({
                 </span>
               </div>
             </div>
+          )}
+
+          {onCompare && (
+            <button
+              onClick={onCompare}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 hover:border-indigo-500/50 hover:bg-indigo-500/20 transition-all cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              Compare
+            </button>
           )}
 
           <button

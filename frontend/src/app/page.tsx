@@ -55,7 +55,7 @@ function TerminalCard() {
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FF5F57', display: 'inline-block' }} />
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#FEBC2E', display: 'inline-block' }} />
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#28C840', display: 'inline-block' }} />
-        <span style={{ marginLeft: 8, color: '#4B5563', fontSize: '11px', letterSpacing: '0.05em' }}>redrob — candidate-search</span>
+        <span style={{ marginLeft: 8, color: '#4B5563', fontSize: '11px', letterSpacing: '0.05em' }}>redrob — candidate-discovery</span>
       </div>
 
       {/* output */}
@@ -91,8 +91,8 @@ export default function Home() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#060B14',
-      color: '#E2E8F0',
+      background: '#0c0d12',
+      color: '#f1f5f9',
       fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
       position: 'relative',
       overflowX: 'hidden',
@@ -146,7 +146,7 @@ export default function Home() {
             <path d="M6 15l4-8 3 5 2-3 1 2" stroke="#0D1117" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.02em', color: '#F1F5F9' }}>
-            Redrob
+            Redrob Discovery
           </span>
         </div>
 
@@ -201,7 +201,7 @@ export default function Home() {
             marginBottom: '28px',
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B', display: 'inline-block', animation: 'blink 2s step-end infinite' }} />
-            Intelligence Suite · v2
+            AI-Powered Candidate Intelligence
           </div>
 
           <h1 style={{
@@ -224,7 +224,7 @@ export default function Home() {
             maxWidth: '480px',
             margin: '0 0 40px',
           }}>
-            Redrob searches millions of candidate profiles using vector similarity and ML ranking — so you spend your time on conversations, not spreadsheets.
+            Redrob Discovery searches millions of candidate profiles using vector similarity and ML ranking — so you spend your time on conversations, not spreadsheets.
           </p>
 
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -376,7 +376,7 @@ export default function Home() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         maxWidth: '1200px', margin: '0 auto',
       }}>
-        <span style={{ fontSize: '12px', color: '#374151' }}>© 2024 Redrob · Candidate Intelligence Suite</span>
+        <span style={{ fontSize: '12px', color: '#374151' }}>© 2024 Redrob Discovery · AI-Powered Candidate Intelligence</span>
         <span style={{ fontSize: '12px', color: '#374151' }}>Powered by dense vector embeddings + XGBoost</span>
       </div>
     </div>

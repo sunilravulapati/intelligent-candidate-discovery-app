@@ -8,6 +8,7 @@ import AnalyticsCards from "@/components/AnalyticsCards";
 import ResultsTable from "@/components/ResultsTable";
 import CandidateList from "@/components/CandidateList";
 import CandidateDetail from "@/components/CandidateDetail";
+import CandidateComparison from "@/components/CandidateComparison";
 import { searchCandidates, checkBackendHealth, CandidateMatch, SearchMetrics, HealthStatus } from "@/lib/api";
 
 const DEFAULT_TITLE = "Backend Engineer";
@@ -17,17 +18,33 @@ const DEFAULT_SKILLS = "Python, FastAPI, PostgreSQL, FAISS";
 const SEARCH_STATE_KEY = "redrob.discovery.dashboard.v1";
 
 interface PersistedDashboardState {
-  candidates: CandidateMatch[];
-  metrics: SearchMetrics | null;
-  selectedCandidateId: string | null;
-  hasSearched: boolean;
-  isSearchCollapsed: boolean;
+  // Only search form fields are persisted — never results, metrics, or rankings.
   queryTitle: string;
   queryDescription: string;
   querySkillsText: string;
 }
 
-function loadPersistedDashboardState(): PersistedDashboardState | null {
+export interface SearchHistoryItem {
+  id: string;
+  queryTitle: string;
+  queryDescription: string;
+  querySkillsText: string;
+  timestamp: number;
+}
+
+const SEARCH_HISTORY_KEY = "redrob.discovery.searchHistory.v1";
+
+function loadSearchHistory(): SearchHistoryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SEARCH_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadPersistedFormFields(): PersistedDashboardState | null {
   if (typeof window === "undefined") return null;
 
   try {
@@ -36,11 +53,6 @@ function loadPersistedDashboardState(): PersistedDashboardState | null {
 
     const saved = JSON.parse(rawState) as Partial<PersistedDashboardState>;
     return {
-      candidates: Array.isArray(saved.candidates) ? saved.candidates : [],
-      metrics: saved.metrics ?? null,
-      selectedCandidateId: saved.selectedCandidateId ?? null,
-      hasSearched: Boolean(saved.hasSearched),
-      isSearchCollapsed: Boolean(saved.isSearchCollapsed),
       queryTitle: saved.queryTitle || DEFAULT_TITLE,
       queryDescription: saved.queryDescription || DEFAULT_DESCRIPTION,
       querySkillsText: saved.querySkillsText || DEFAULT_SKILLS,
@@ -52,22 +64,17 @@ function loadPersistedDashboardState(): PersistedDashboardState | null {
 }
 
 export default function Dashboard() {
-  const [restoredState] = useState<PersistedDashboardState | null>(() => loadPersistedDashboardState());
-  const [candidates, setCandidates] = useState<CandidateMatch[]>(() => restoredState?.candidates ?? []);
-  const [metrics, setMetrics] = useState<SearchMetrics | null>(() => restoredState?.metrics ?? null);
+  const [restoredState] = useState<PersistedDashboardState | null>(() => loadPersistedFormFields());
+  // Never restore old results, metrics, rankings, or selected candidates.
+  // Only the search form fields are preserved across sessions.
+  const [candidates, setCandidates] = useState<CandidateMatch[]>([]);
+  const [metrics, setMetrics] = useState<SearchMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [selectedCandidate, setSelectedCandidate] = useState<CandidateMatch | null>(() => {
-    const saved = restoredState;
-    if (!saved?.candidates?.length) return null;
-    return (
-      saved.candidates.find((candidate) => candidate.candidate_id === saved.selectedCandidateId) ??
-      saved.candidates[0]
-    );
-  });
-  const [isSearchCollapsed, setIsSearchCollapsed] = useState(() => restoredState?.isSearchCollapsed ?? false);
-  const [hasSearched, setHasSearched] = useState(() => restoredState?.hasSearched ?? false);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateMatch | null>(null);
+  const [isSearchCollapsed, setIsSearchCollapsed] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
 
   const [queryTitle, setQueryTitle] = useState(() => restoredState?.queryTitle ?? DEFAULT_TITLE);
   const [queryDescription, setQueryDescription] = useState(() => restoredState?.queryDescription ?? DEFAULT_DESCRIPTION);
@@ -76,6 +83,8 @@ export default function Dashboard() {
   const searchGenerationRef = useRef(0);
   const searchStartTimeRef = useRef<number | null>(null);
   const hasRestoredStateRef = useRef(true);
+
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>(() => loadSearchHistory());
 
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
@@ -89,11 +98,6 @@ export default function Dashboard() {
     if (!hasRestoredStateRef.current) return;
 
     const stateToPersist: PersistedDashboardState = {
-      candidates,
-      metrics,
-      selectedCandidateId: selectedCandidate?.candidate_id ?? null,
-      hasSearched,
-      isSearchCollapsed,
       queryTitle,
       queryDescription,
       querySkillsText,
@@ -101,14 +105,9 @@ export default function Dashboard() {
 
     window.localStorage.setItem(SEARCH_STATE_KEY, JSON.stringify(stateToPersist));
   }, [
-    candidates,
-    hasSearched,
-    isSearchCollapsed,
-    metrics,
     queryDescription,
     querySkillsText,
     queryTitle,
-    selectedCandidate,
   ]);
 
   useEffect(() => {
@@ -145,7 +144,7 @@ export default function Dashboard() {
           timerId = setTimeout(fetchHealth, 1000);
         }
       } catch {
-        setError("Connecting to backend services…");
+        setError("Workspace is initializing. Please wait a moment and try again.");
         timerId = setTimeout(fetchHealth, 1500);
       } finally {
         setHealthLoading(false);
@@ -190,6 +189,21 @@ export default function Dashboard() {
     setQueryDescription(description);
     setQuerySkillsText(skills.join(", "));
 
+    // Update search history
+    const newItem: SearchHistoryItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      queryTitle: title,
+      queryDescription: description,
+      querySkillsText: skills.join(", "),
+      timestamp: Date.now(),
+    };
+    setSearchHistory((prev) => {
+      const deduped = prev.filter(h => h.queryTitle.toLowerCase() !== title.toLowerCase() || h.querySkillsText !== skills.join(", "));
+      const next = [newItem, ...deduped].slice(0, 5);
+      if (typeof window !== "undefined") window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+
     try {
       const response = await searchCandidates(title, description, skills);
 
@@ -216,7 +230,7 @@ export default function Dashboard() {
       setIsSearchCollapsed(true);
     } catch (err: unknown) {
       if (generation !== searchGenerationRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to search candidates.");
+      setError("Unable to retrieve candidates. Please retry your search.");
     } finally {
       if (generation === searchGenerationRef.current) {
         setIsLoading(false);
@@ -233,12 +247,21 @@ export default function Dashboard() {
     setIsSearchCollapsed(true);
   };
 
+  const applyHistoryItem = (item: SearchHistoryItem) => {
+    setQueryTitle(item.queryTitle);
+    setQueryDescription(item.queryDescription);
+    setQuerySkillsText(item.querySkillsText);
+  };
+
   const isWorkspaceReady = health?.startup_status?.ready ?? false;
 
   if (!isWorkspaceReady) {
-    const cache_loaded = health?.startup_status?.cache_loaded ?? false;
-    const faiss_loaded = health?.startup_status?.faiss_loaded ?? false;
-    const model_loaded = health?.startup_status?.model_loaded ?? false;
+    const startupStatus = health?.startup_status as Record<string, unknown> | undefined;
+    const cache_loaded = (startupStatus?.cache_loaded as boolean) ?? false;
+    const index_loaded = (startupStatus?.index_loaded as boolean) ?? false;
+    const model_loaded = (startupStatus?.model_loaded as boolean) ?? false;
+    const ranking_loaded = (startupStatus?.ranking_loaded as boolean) ?? false;
+    const startup_time_ms = (startupStatus?.startup_time_ms as number) ?? 0;
     const candidatesCount = health?.datasets?.active_source === "challenge_sample" ? "300" : "99,727";
 
     return (
@@ -250,14 +273,15 @@ export default function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-white mb-2">Preparing Workspace</h2>
+            <h2 className="text-lg font-semibold text-white mb-2">Preparing Semantic Workspace</h2>
             <p className="text-slate-500 text-sm mb-6">Loading candidate index and semantic retrieval engine…</p>
 
             <div className="space-y-2 text-left text-sm">
               {[
-                { label: "Candidate cache", done: cache_loaded },
-                { label: "FAISS vector index", done: faiss_loaded },
-                { label: "Ranking engine", done: model_loaded },
+                { label: "Candidate Cache", done: cache_loaded },
+                { label: "FAISS Vector Index", done: index_loaded },
+                { label: "Embedding Model", done: model_loaded },
+                { label: "Ranking Engine", done: ranking_loaded },
               ].map((step) => (
                 <div key={step.label} className="flex items-center justify-between p-3 rounded-lg bg-slate-950/50 border border-white/[0.04]">
                   <span className="text-slate-400">{step.label}</span>
@@ -271,6 +295,9 @@ export default function Dashboard() {
             {error && <p className="text-rose-400 text-xs mt-4">{error}</p>}
             {health && (
               <p className="text-[10px] text-slate-600 mt-4 uppercase tracking-wider">{candidatesCount} candidates indexed</p>
+            )}
+            {startup_time_ms > 0 && (
+              <p className="text-[10px] text-slate-600 mt-1 uppercase tracking-wider">Startup: {(startup_time_ms / 1000).toFixed(1)}s</p>
             )}
             {healthLoading && !health && (
               <p className="text-[10px] text-slate-600 mt-3">Checking service health...</p>
@@ -298,7 +325,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-base font-semibold text-white tracking-tight">Redrob Discovery</h1>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">Recruiter Workspace</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-medium">AI-Powered Candidate Intelligence</p>
             </div>
           </div>
 
@@ -313,8 +340,22 @@ export default function Dashboard() {
 
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-6 py-6 flex flex-col gap-5">
         {error && (
-          <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
-            {error}
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 flex items-center justify-between shadow-lg shadow-rose-500/5">
+            <span className="text-sm font-medium text-rose-300">{error}</span>
+            <button
+              onClick={() => {
+                setError(null);
+                if (health?.startup_status?.ready) {
+                  const skills = querySkillsText.split(",").map(s => s.trim()).filter(Boolean);
+                  if (queryTitle && queryDescription) {
+                    handleSearch(queryTitle, queryDescription, skills);
+                  }
+                }
+              }}
+              className="text-xs font-bold uppercase tracking-wider text-rose-400 hover:text-rose-200 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -326,6 +367,7 @@ export default function Dashboard() {
             metrics={metrics}
             resultCount={candidates.length}
             onRefine={handleRefineSearch}
+            onCompare={() => setShowCompare(true)}
           />
         )}
 
@@ -370,15 +412,49 @@ export default function Dashboard() {
                 onSkillsTextChange={setQuerySkillsText}
               />
             </div>
-            <div className="lg:col-span-8">
-              <ResultsTable candidates={isLoading ? [] : candidates} onViewCandidate={handleViewCandidate} isLoading={isLoading} />
+            <div className="lg:col-span-8 h-full flex items-center justify-center">
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl w-full max-w-2xl p-10 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/[0.05] to-purple-500/[0.05] pointer-events-none" />
+                <div className="relative flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center mb-6 text-indigo-400">
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">Find the Best Candidate</h2>
+                  <p className="text-slate-400 max-w-md mx-auto leading-relaxed text-sm">
+                    Enter a role title, job description, and required skills. AI-powered semantic ranking will identify the most relevant candidates instantly.
+                  </p>
+                  
+                  {searchHistory.length > 0 && (
+                    <div className="mt-10 w-full text-left">
+                      <h3 className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 mb-3 border-b border-white/[0.06] pb-2">Recent Searches</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {searchHistory.map(h => (
+                          <button
+                            key={h.id}
+                            onClick={() => applyHistoryItem(h)}
+                            className="bg-slate-900/60 border border-white/[0.08] hover:border-indigo-500/50 hover:bg-indigo-500/10 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                          >
+                            {h.queryTitle}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
       </main>
 
+      {showCompare && (
+        <CandidateComparison candidates={candidates} onClose={() => setShowCompare(false)} />
+      )}
+
       <footer className="border-t border-white/[0.04] py-4 text-center text-[11px] text-slate-600">
-        Redrob Intelligent Discovery · Hybrid Semantic Ranking
+        Redrob Discovery · AI-Powered Candidate Intelligence
       </footer>
     </div>
   );

@@ -7,36 +7,87 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.api import deps
+from app.core.workspace_state import workspace_state
 
 logger = logging.getLogger(__name__)
 
 
 def load_all_background():
+    """
+    Loads all subsystems in a background thread.
+
+    Each step is individually timed and reported via WorkspaceState.
+    The startup thread sets per-component flags so the /health endpoint
+    can report granular progress while FastAPI is already accepting requests.
+    """
+    workspace_state.mark_startup_begin()
     logger.info("Semantic Workspace Initialization Started")
-    t_start = time.time()
+    t_start = time.perf_counter()
+
     try:
         retrieval = deps.get_retrieval_service()
         ingestion = deps.get_ingestion_service()
 
-        # Single thread-safe load path (cache + FAISS + embedding model)
-        logger.info("Loading candidate cache, FAISS index, and embedding model...")
-        t_load_start = time.time()
-        retrieval.load_index_and_cache(ingestion)
-        logger.info(f"Completed in {(time.time() - t_load_start)*1000:.2f} ms")
+        # ── Step 1: Candidate cache ──────────────────────────────
+        logger.info("[STARTUP 1/4] Loading candidate cache...")
+        t0 = time.perf_counter()
+        retrieval._load_candidate_cache(ingestion)
+        cache_ms = (time.perf_counter() - t0) * 1000
+        workspace_state.set_cache_loaded(cache_ms)
+        print(f"[STARTUP 1/4] Candidate cache loaded in {cache_ms:.2f}ms")
 
-        t_total = time.time() - t_start
+        # ── Step 2: FAISS index ──────────────────────────────────
+        logger.info("[STARTUP 2/4] Loading FAISS index...")
+        t0 = time.perf_counter()
+        retrieval._load_faiss_index()
+        index_ms = (time.perf_counter() - t0) * 1000
+        workspace_state.set_index_loaded(index_ms)
+        print(f"[STARTUP 2/4] FAISS index loaded in {index_ms:.2f}ms")
+
+        # ── Step 3: Embedding model ──────────────────────────────
+        logger.info("[STARTUP 3/4] Loading embedding model...")
+        t0 = time.perf_counter()
+        if retrieval._embedding_model is not None:
+            retrieval._embedding_model._load_model()
+        model_ms = (time.perf_counter() - t0) * 1000
+        workspace_state.set_model_loaded(model_ms)
+        print(f"[STARTUP 3/4] Embedding model loaded in {model_ms:.2f}ms")
+
+        # ── Step 4: Ranking + Explainability singletons ──────────
+        logger.info("[STARTUP 4/4] Pre-warming ranking & explainability services...")
+        t0 = time.perf_counter()
+        deps.get_ranking_service()
+        deps.get_explainability_service()
+        ranking_ms = (time.perf_counter() - t0) * 1000
+        workspace_state.set_ranking_loaded(ranking_ms)
+        print(f"[STARTUP 4/4] Ranking & explainability ready in {ranking_ms:.2f}ms")
+
+        workspace_state.mark_startup_complete()
+
+        t_total = (time.perf_counter() - t_start) * 1000
         logger.info("Semantic Workspace Ready")
-        logger.info(f"Total Startup Time: {t_total*1000:.2f} ms")
+        print("\n" + "=" * 60)
+        print("STARTUP TIMING BREAKDOWN")
+        print("=" * 60)
+        print(f"  Candidate Cache  : {cache_ms:>10.2f} ms")
+        print(f"  FAISS Index      : {index_ms:>10.2f} ms")
+        print(f"  Embedding Model  : {model_ms:>10.2f} ms")
+        print(f"  Ranking Preload  : {ranking_ms:>10.2f} ms")
+        print(f"  --------------------------------")
+        print(f"  Total Startup    : {t_total:>10.2f} ms")
+        print("=" * 60 + "\n")
+
     except Exception as e:
         logger.error(f"Error during background workspace initialization: {e}", exc_info=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start loading in a background thread to prevent blocking FastAPI startup
+    # Start loading in a background thread — FastAPI accepts requests immediately.
+    # Health endpoint is available during init; search returns 503 until ready.
     thread = threading.Thread(
         target=load_all_background,
-        daemon=True
+        daemon=True,
     )
     thread.start()
     yield

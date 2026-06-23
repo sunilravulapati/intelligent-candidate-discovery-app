@@ -10,6 +10,8 @@ import {
   rankBadgeClass,
   rankTone,
   scorePercent,
+  getMatchTier,
+  getMatchTierColor,
 } from "@/lib/ranking";
 
 interface CandidateDetailProps {
@@ -17,21 +19,8 @@ interface CandidateDetailProps {
   queryTitle?: string;
 }
 
-const CANDIDATE_WORKFLOW_KEY = "redrob.discovery.candidateWorkflow.v1";
-
-type CandidateWorkflowState = Record<string, "saved" | "shortlisted" | "rejected">;
-
-function loadCandidateWorkflowState(): CandidateWorkflowState {
-  if (typeof window === "undefined") return {};
-
-  try {
-    const rawState = window.localStorage.getItem(CANDIDATE_WORKFLOW_KEY);
-    return rawState ? JSON.parse(rawState) : {};
-  } catch {
-    window.localStorage.removeItem(CANDIDATE_WORKFLOW_KEY);
-    return {};
-  }
-}
+import { useCandidateWorkflow, WorkflowAction } from "@/lib/workflow";
+import { showToast } from "@/components/Toast";
 
 function ScoreCard({
   label,
@@ -52,7 +41,7 @@ function ScoreCard({
 
 export default function CandidateDetail({ candidate, queryTitle }: CandidateDetailProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "experience" | "skills" | "signals">("overview");
-  const [workflowState, setWorkflowState] = useState<CandidateWorkflowState>(() => loadCandidateWorkflowState());
+  const { workflowState, setWorkflowStatus } = useCandidateWorkflow();
 
   if (!candidate) {
     return (
@@ -73,32 +62,35 @@ export default function CandidateDetail({ candidate, queryTitle }: CandidateDeta
   const matched = candidate.matched_skills ?? [];
   const missing = candidate.missing_skills ?? [];
   const currentWorkflow = workflowState[candidate.candidate_id];
-  const setCandidateWorkflow = (status: CandidateWorkflowState[string]) => {
-    setWorkflowState((current) => {
-      const next = { ...current };
-      if (next[candidate.candidate_id] === status) {
-        delete next[candidate.candidate_id];
-      } else {
-        next[candidate.candidate_id] = status;
-      }
-      window.localStorage.setItem(CANDIDATE_WORKFLOW_KEY, JSON.stringify(next));
-      return next;
-    });
+  const setCandidateWorkflow = (status: WorkflowAction) => {
+    const isActivating = currentWorkflow?.status !== status;
+    setWorkflowStatus(candidate.candidate_id, status);
+    
+    if (isActivating) {
+      if (status === "saved") showToast("✓ Candidate Saved", "success");
+      else if (status === "shortlisted") showToast("✓ Added to Shortlist", "success");
+      else if (status === "rejected") showToast("Candidate Rejected", "error");
+    }
   };
   const requestedSkillCount = matched.length + missing.length;
   const generatedInsights = [
-    candidate.role_fit_percent >= 75
-      ? `Strong ${queryTitle || "role"} title alignment (${candidate.role_fit_percent}% role fit)`
-      : candidate.role_fit_percent >= 40
-      ? `Partial ${queryTitle || "role"} title alignment (${candidate.role_fit_percent}% role fit)`
-      : `Limited title alignment for ${queryTitle || "this role"} (${candidate.role_fit_percent}% role fit)`,
+    candidate.role_fit_percent >= 80
+      ? `Strong alignment with ${queryTitle || "role"} requirements.`
+      : candidate.role_fit_percent >= 50
+      ? `Moderate alignment with ${queryTitle || "role"} requirements.`
+      : `Needs further evaluation for ${queryTitle || "role"} alignment.`,
+    
     requestedSkillCount > 0
-      ? `${matched.length} of ${requestedSkillCount} required skills matched`
-      : "No explicit required skills were supplied",
-    `${candidate.years_of_experience} years relevant experience`,
-    candidate.semantic_fit_percent > 0
-      ? `${fitColorClass(candidate.semantic_fit_percent).includes("emerald") ? "High" : "Measured"} semantic similarity to job requirements (${candidate.semantic_fit_percent}%)`
-      : "Keyword fallback used because semantic retrieval was unavailable",
+      ? `Matches ${matched.length} of ${requestedSkillCount} required technologies.`
+      : "No specific technical constraints provided in query.",
+      
+    `${candidate.years_of_experience}+ years of relevant industry experience.`,
+    
+    candidate.semantic_fit_percent >= 80
+      ? "High semantic similarity to the detailed role description."
+      : candidate.semantic_fit_percent >= 50
+      ? "Solid semantic overlap with core responsibilities."
+      : "Baseline semantic match; recommend deeper interview screening."
   ];
   const reasons = candidate.ranking_reasons?.length ? candidate.ranking_reasons : generatedInsights;
 
@@ -126,6 +118,9 @@ export default function CandidateDetail({ candidate, queryTitle }: CandidateDeta
                   Top Match
                 </span>
               )}
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${getMatchTierColor(candidate.overall_score)}`}>
+                {getMatchTier(candidate.overall_score)}
+              </span>
             </div>
             <h2 className="text-xl font-semibold text-white mt-2 tracking-tight">{candidate.name}</h2>
             <p className="text-sm text-indigo-300/90 font-medium mt-0.5">{candidate.current_title || candidate.headline}</p>
@@ -137,11 +132,11 @@ export default function CandidateDetail({ candidate, queryTitle }: CandidateDeta
           </div>
           <div className="flex flex-wrap justify-end gap-2 shrink-0">
             {([
-              { label: "Save", activeLabel: "Saved", value: "saved" },
-              { label: "Shortlist", activeLabel: "Shortlisted", value: "shortlisted" },
-              { label: "Reject", activeLabel: "Rejected", value: "rejected" },
-            ] as const).map((action) => {
-              const active = currentWorkflow === action.value;
+              { label: "Save", activeLabel: "Saved ✓", value: "saved" as WorkflowAction },
+              { label: "Shortlist", activeLabel: "Shortlisted ✓", value: "shortlisted" as WorkflowAction },
+              { label: "Reject", activeLabel: "Rejected ✓", value: "rejected" as WorkflowAction },
+            ]).map((action) => {
+              const active = currentWorkflow?.status === action.value;
               const activeClass =
                 action.value === "rejected"
                   ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
@@ -209,6 +204,26 @@ export default function CandidateDetail({ candidate, queryTitle }: CandidateDeta
                 ))}
               </ul>
             </section>
+
+            {/* Recruiter Actions */}
+            {currentWorkflow && (
+              <section className="rounded-xl border border-white/[0.06] bg-slate-950/30 p-4 space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Recruiter Actions
+                </h3>
+                <div className="flex items-center gap-2 text-sm text-slate-300">
+                  <span className={`w-2 h-2 rounded-full ${
+                    currentWorkflow.status === "saved" ? "bg-indigo-400" :
+                    currentWorkflow.status === "shortlisted" ? "bg-emerald-400" : "bg-rose-400"
+                  }`} />
+                  <span className="capitalize">{currentWorkflow.status}</span>
+                  <span className="text-slate-500">•</span>
+                  <span className="text-slate-500">
+                    {new Date(currentWorkflow.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </section>
+            )}
 
             {/* Ranking breakdown */}
             <section className="rounded-xl border border-white/[0.06] bg-slate-950/30 p-4 space-y-3">

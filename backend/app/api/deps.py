@@ -23,9 +23,20 @@ def get_retrieval_service() -> RetrievalService:
     return _retrieval_service
 
 
-def get_ranking_service() -> RankingService:
-    return RankingService()
+_ranking_service = None
 
+def get_ranking_service() -> RankingService:
+    global _ranking_service
+    if _ranking_service is None:
+        _ranking_service = RankingService()
+    return _ranking_service
+
+
+_explainability_service = None
 
 def get_explainability_service() -> ExplainabilityService:
-    return ExplainabilityService()
+    global _explainability_service
+    if _explainability_service is None:
+        _explainability_service = ExplainabilityService()
+    return _explainability_service
+
