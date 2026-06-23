@@ -6,7 +6,6 @@ import {
   RANKING_FORMULA,
   RANKING_FORMULA_HELP,
   RANKING_WEIGHTS,
-  fitColorClass,
   rankBadgeClass,
   rankTone,
   scorePercent,

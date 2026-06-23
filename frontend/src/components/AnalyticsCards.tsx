@@ -1,15 +1,25 @@
 "use client";
 
 import React from "react";
-import { SearchMetrics } from "@/lib/api";
+import { SearchMetrics, generateSubmission } from "@/lib/api";
 
 interface AnalyticsCardsProps {
   metrics: SearchMetrics | null;
   hasSearched?: boolean;
   bestScore?: number;
+  queryTitle?: string;
+  queryDescription?: string;
+  querySkills?: string[];
 }
 
-export default function AnalyticsCards({ metrics, hasSearched = false, bestScore = 0 }: AnalyticsCardsProps) {
+export default function AnalyticsCards({
+  metrics,
+  hasSearched = false,
+  bestScore = 0,
+  queryTitle = "",
+  queryDescription = "",
+  querySkills = [],
+}: AnalyticsCardsProps) {
   if (!hasSearched || !metrics?.retrieval_pool_size) {
     return null;
   }

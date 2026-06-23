@@ -52,13 +52,13 @@ class ExplainabilityService:
         if job_norm and cand_norm and job_norm == cand_norm:
             reasons.append(f"Exact {job_title} title match")
         elif title_pct >= 85:
-            reasons.append(f"Strong title alignment — {cand_title} ({title_pct}% role fit)")
+            reasons.append(f"Strong title alignment - {cand_title} ({title_pct}% role fit)")
         elif title_pct >= 65:
-            reasons.append(f"High role alignment — {cand_title} ({title_pct}% role fit)")
+            reasons.append(f"High role alignment - {cand_title} ({title_pct}% role fit)")
         elif title_pct >= 40:
             reasons.append(f"Partial role alignment with {job_title} ({title_pct}%)")
         elif title_pct > 0:
-            reasons.append(f"Limited role alignment — current title: {cand_title}")
+            reasons.append(f"Limited role alignment - current title: {cand_title}")
 
         # 2. Required skills
         req_count = len(required_skills)

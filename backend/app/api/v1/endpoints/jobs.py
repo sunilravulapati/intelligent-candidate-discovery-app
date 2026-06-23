@@ -3,7 +3,7 @@ import re
 import logging
 from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from app.api import deps
@@ -198,11 +198,6 @@ def match_candidates(
     t_retrieval_start = time.time()
 
     if retrieval.is_semantic_ready():
-        import cProfile, pstats, io
-        pr = cProfile.Profile()
-        pr.enable()
-        
-        t_retrieval_call_start = time.perf_counter()
         # Semantic: FAISS top-500 pre-filter
         candidates_with_scores, ret_timings = retrieval.retrieve_candidates(
             job_title=request.title,
@@ -211,18 +206,6 @@ def match_candidates(
             top_k=500,
             return_timings=True,
         )
-        t_retrieval_call_end = time.perf_counter()
-        
-        pr.disable()
-        s = io.StringIO()
-        ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
-        ps.print_stats(30)
-        print("\n==================================================")
-        print("TOP TIME CONSUMERS")
-        print("==================")
-        print(s.getvalue())
-        print("==================================================\n")
-        
         timing_breakdown["Query Embedding"] = ret_timings.get("Query Embedding", 0.0)
         timing_breakdown["FAISS Retrieval"] = ret_timings.get("FAISS Retrieval", 0.0)
         timing_breakdown["Candidate Reconstruction"] = ret_timings.get("Candidate Reconstruction", 0.0)
@@ -231,10 +214,7 @@ def match_candidates(
         timing_breakdown["Embedding Calls This Session"] = ret_timings.get("Embedding Calls This Session", 0.0)
         timing_breakdown["Embedding Cache Hits This Session"] = ret_timings.get("Embedding Cache Hits This Session", 0.0)
         timing_breakdown["Embedding Cache Misses This Session"] = ret_timings.get("Embedding Cache Misses This Session", 0.0)
-        
-        retrieval_timer_ms = (t_retrieval_call_end - t_retrieval_call_start) * 1000
-        print(f"RETRIEVAL_TIMER = {retrieval_timer_ms:.2f}ms")
-        print(f"FAISS_TIMER = {timing_breakdown['FAISS Retrieval']:.2f}ms")
+        timing_breakdown["Embedding Cache Misses This Session"] = ret_timings.get("Embedding Cache Misses This Session", 0.0)
     else:
         # Keyword fallback: full scan — all candidates with semantic_score=0.0
         job_title_tokens = _tokenize(request.title)
@@ -372,43 +352,9 @@ def match_candidates(
         top_skills_found=top_skills,
         timing_breakdown=timing_breakdown,
     )
-
-    # ── SEARCH PROFILE ── structured backend profiling output ─────────────────
-    _cache_hit_flag = bool(timing_breakdown["Embedding Cache Hit"])
-    _encode_calls_req = int(timing_breakdown["Embedding Calls This Request"])
-    _encode_calls_sess = int(stats["session_encode_calls"])
-    _embed_ms = timing_breakdown["Query Embedding"]
-    _faiss_ms = timing_breakdown["FAISS Retrieval"]
-    _reconstruct_ms = timing_breakdown.get("Candidate Reconstruction", 0.0)
-    _rank_ms = timing_breakdown["Candidate Ranking"]
-    _explain_ms = timing_breakdown["Explainability Generation"]
-    print("\n================ SEARCH PROFILE ================")
-    print("Embedding:")
-    print(f"  cache hit/miss    : {'HIT' if _cache_hit_flag else 'MISS'}")
-    print(f"  encode calls/req  : {_encode_calls_req}")
-    print(f"  encode calls/sess : {_encode_calls_sess}")
-    print(f"  cache hit rate    : {stats['cache_hit_rate']:.2%}  (cache size={stats['cache_size']})")
-    print(f"  model load state  : loaded (id stable across requests)")
-    print(f"  time              : {_embed_ms:.2f}ms")
-    print("FAISS:")
-    print(f"  index.search only : see [FAISS] line above for sub-breakdown")
-    print(f"  outer timer       : {_faiss_ms:.2f}ms  (wraps entire faiss_index.search())")
-    print(f"  pool size         : {pool_size}")
-    print("Candidate Reconstruction:")
-    print(f"  dict lookups      : {pool_size} x candidates_cache.get()")
-    print(f"  time              : {_reconstruct_ms:.2f}ms")
-    print("Ranking:")
-    print(f"  ranking time      : {_rank_ms:.2f}ms")
-    print("Explainability:")
-    print(f"  explainability    : {_explain_ms:.2f}ms")
-    print("Total:")
-    print(f"  outer retrieval   : {t_retrieval_ms}ms  (embedding + FAISS + reconstruction)")
-    print(f"  end-to-end        : {t_total_ms}ms")
-    print("================================================\n")
     
     t_request_end = time.perf_counter()
     request_timer_ms = (t_request_end - t_request_start) * 1000
-    print(f"REQUEST_TIMER = {request_timer_ms:.2f}ms")
 
     # Store last search performance for /debug/performance
     workspace_state.last_search_perf = {
@@ -422,3 +368,70 @@ def match_candidates(
 
     response_obj = JobSearchResponse(metrics=metrics, results=results)
     return response_obj
+
+@router.post("/jobs/submission")
+def generate_submission(
+    request: JobSearchRequest,
+    retrieval: RetrievalService = Depends(deps.get_retrieval_service),
+    ranking: RankingService = Depends(deps.get_ranking_service),
+    explainability: ExplainabilityService = Depends(deps.get_explainability_service),
+):
+    """
+    Generates a deterministic submission.csv file for the challenge.
+    Format: candidate_id,rank,score,reasoning
+    """
+    if not workspace_state.ready:
+        raise HTTPException(status_code=503, detail="Workspace initializing.")
+
+    req_skills = request.required_skills or _fallback_skill_parse(request.description)
+
+    # 1. Retrieve
+    if retrieval.is_semantic_ready():
+        candidates_with_scores, _ = retrieval.retrieve_candidates(
+            job_title=request.title,
+            job_description=request.description,
+            required_skills=req_skills,
+            top_k=500,
+        )
+    else:
+        job_title_tokens = _tokenize(request.title)
+        req_skills_lower = {s.lower() for s in req_skills}
+        candidates_with_scores = []
+        for cand in retrieval.candidates_cache.values():
+            cand_skills_lower = {s.get("name", "").lower() for s in cand.get("skills", [])}
+            skill_ov = len(req_skills_lower & cand_skills_lower) / max(len(req_skills_lower), 1)
+            cand_title = cand.get("profile", {}).get("current_title", "")
+            title_sim = _jaccard_title_similarity(request.title, cand_title)
+            baseline = 0.6 * skill_ov + 0.4 * title_sim
+            candidates_with_scores.append((cand, baseline))
+
+    # 2. Rank
+    ranked = ranking.hybrid_rank(
+        required_skills=req_skills,
+        candidates_with_scores=candidates_with_scores,
+        top_k=100,
+        job_title=request.title,
+    )
+
+    # 3. Explain and format
+    lines = ["candidate_id,rank,score,reasoning"]
+    for rank_idx, cand in enumerate(ranked[:100], start=1):
+        overall = cand.get("overall_score", 0.0)
+        semantic_sim = cand.get("_semantic_similarity", 0.0)
+        
+        ranking_reasons = explainability.generate_ranking_reasons(
+            job_title=request.title,
+            required_skills=req_skills,
+            candidate=cand,
+            semantic_similarity=semantic_sim if retrieval.is_semantic_ready() else None,
+            rank=rank_idx,
+        )
+        
+        # Escape quotes in CSV
+        safe_explanation = (". ".join(ranking_reasons) + ".").replace('"', '""')
+        line = f'{cand.get("candidate_id")},{rank_idx},{overall:.4f},"{safe_explanation}"'
+        lines.append(line)
+
+    csv_content = "\n".join(lines)
+    return Response(content=csv_content, media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="submission.csv"'})
+

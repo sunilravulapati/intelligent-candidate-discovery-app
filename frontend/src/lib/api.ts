@@ -130,7 +130,8 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 export async function searchCandidates(
   title: string,
   description: string,
-  requiredSkills: string[] = []
+  requiredSkills: string[] = [],
+  top_k: number = 10
 ): Promise<JobSearchResponse> {
   const response = await apiFetch("/api/jobs", {
     method: "POST",
@@ -141,7 +142,7 @@ export async function searchCandidates(
       title,
       description,
       required_skills: requiredSkills,
-      top_k: 10,
+      top_k,
     }),
   });
 
@@ -151,6 +152,39 @@ export async function searchCandidates(
   }
 
   return response.json();
+}
+
+export async function generateSubmission(
+  title: string,
+  description: string,
+  requiredSkills: string[] = []
+): Promise<void> {
+  const response = await apiFetch("/api/jobs/submission", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      title,
+      description,
+      required_skills: requiredSkills,
+      top_k: 100, // Export more candidates for submission
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(errText || `Submission generation failed (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", "submission.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 export interface HealthStatus {

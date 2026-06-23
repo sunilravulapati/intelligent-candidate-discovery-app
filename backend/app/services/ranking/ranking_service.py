@@ -469,17 +469,6 @@ class RankingService:
             "Ranking Total Time": round(total_ranking_ms, 2),
         }
 
-        # Log and Print cumulative ranking times
-        print("\n================ RANKING DETAILED TIMINGS ================")
-        print(f"Title Alignment: {t_title_alignment:.2f}ms")
-        print(f"Skill Match: {t_skill_match:.2f}ms")
-        print(f"Alias Resolution: {t_alias_resolution:.2f}ms")
-        print(f"Experience: {t_experience:.2f}ms")
-        print(f"Semantic Score Calc: {t_semantic:.2f}ms")
-        print(f"Final Score Aggregation: {t_aggregation:.2f}ms")
-        print(f"Sorting: {t_sorting:.2f}ms")
-        print("==========================================================\n")
-
         logger.info(
             "RANKING TIMING - Title Alignment: %.2fms | Skill Match: %.2fms | Alias Resolution: %.2fms | Experience: %.2fms | Semantic: %.2fms | Aggregation: %.2fms | Sorting: %.2fms",
             t_title_alignment,

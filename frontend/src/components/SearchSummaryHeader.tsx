@@ -11,6 +11,8 @@ interface SearchSummaryHeaderProps {
   resultCount: number;
   onRefine: () => void;
   onCompare?: () => void;
+  onExportCSV?: () => void;
+  onExportExcel?: () => void;
 }
 
 export default function SearchSummaryHeader({
@@ -21,6 +23,8 @@ export default function SearchSummaryHeader({
   resultCount,
   onRefine,
   onCompare,
+  onExportCSV,
+  onExportExcel,
 }: SearchSummaryHeaderProps) {
   const retrievalLabel =
     metrics?.retrieval_mode === "semantic"
@@ -98,6 +102,30 @@ export default function SearchSummaryHeader({
                 </span>
               </div>
             </div>
+          )}
+
+          {onExportCSV && (
+            <button
+              onClick={onExportCSV}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:border-emerald-500/50 hover:bg-emerald-500/20 transition-all cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              CSV
+            </button>
+          )}
+
+          {onExportExcel && (
+            <button
+              onClick={onExportExcel}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:border-emerald-500/50 hover:bg-emerald-500/20 transition-all cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Excel
+            </button>
           )}
 
           {onCompare && (

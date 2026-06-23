@@ -1,0 +1,44 @@
+# Redrob Hackathon — Submission Metadata
+team_name: "Sentinels of Search"
+primary_contact:
+  name: "Sunil Ravulapati"
+  email: "sunilravulapati028@gmail.com"
+  phone: "+91-9550145568"
+
+team_members:
+  - name: "Sunil Ravulapati"
+    email: "sunilravulapati028@gmail.com"
+    role: "Solo Participant, Team Lead, Lead Developer"
+
+github_repo: "https://github.com/sunilravulapati/intelligent-candidate-discovery-app"
+sandbox_link: "insert the link here"
+
+reproduce_command: "cd backend && .\venv\Scripts\python.exe scripts/create_submission.py --output ../submission.csv"
+
+compute:
+  platform: "Windows PC"
+  cpu_cores: 8
+  ram_gb: 16
+  python_version: "3.11.4"
+  os: "Windows 11"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: false
+  pre_computation_time_minutes: 0
+
+ai_tools_used:
+  - "ChatGPT"
+  - "Codex"
+
+ai_usage_summary: |
+  Used ChatGPT and Codex for architectural discussion, debugging,performance optimization, code review, UI refinement,and documentation assistance. All final design decisions,implementation, testing, and submission preparation were performed by the participant.
+
+methodology_summary: |
+   Built a hybrid candidate discovery and ranking system combining semantic retrieval using SentenceTransformers embeddings and FAISS vector search with rule-based ranking signals. Candidate ranking incorporates role alignment, skill overlap, semantic similarity, experience fit, activity indicators, and behavioral signals. Honeypot and invalid profiles are filtered during ingestion to improve ranking quality. The system generates recruiter-oriented explanations for each recommendation and produces submission-ready ranking exports compliant with the challenge specification.
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true
+  reproduction_tested: true

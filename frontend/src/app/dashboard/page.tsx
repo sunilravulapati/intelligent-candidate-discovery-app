@@ -5,11 +5,12 @@ import SearchPanel from "@/components/SearchPanel";
 import SearchSummaryHeader from "@/components/SearchSummaryHeader";
 import SearchLoadingOverlay from "@/components/SearchLoadingOverlay";
 import AnalyticsCards from "@/components/AnalyticsCards";
-import ResultsTable from "@/components/ResultsTable";
 import CandidateList from "@/components/CandidateList";
 import CandidateDetail from "@/components/CandidateDetail";
 import CandidateComparison from "@/components/CandidateComparison";
 import { searchCandidates, checkBackendHealth, CandidateMatch, SearchMetrics, HealthStatus } from "@/lib/api";
+import * as XLSX from "xlsx";
+import Papa from "papaparse";
 
 const DEFAULT_TITLE = "Backend Engineer";
 const DEFAULT_DESCRIPTION =
@@ -228,7 +229,7 @@ export default function Dashboard() {
       }
 
       setIsSearchCollapsed(true);
-    } catch (err: unknown) {
+    } catch {
       if (generation !== searchGenerationRef.current) return;
       setError("Unable to retrieve candidates. Please retry your search.");
     } finally {
@@ -242,15 +243,47 @@ export default function Dashboard() {
     setIsSearchCollapsed(false);
   };
 
-  const handleViewCandidate = (candidate: CandidateMatch) => {
-    setSelectedCandidate(candidate);
-    setIsSearchCollapsed(true);
-  };
-
   const applyHistoryItem = (item: SearchHistoryItem) => {
     setQueryTitle(item.queryTitle);
     setQueryDescription(item.queryDescription);
     setQuerySkillsText(item.querySkillsText);
+  };
+
+  const prepareExportData = async () => {
+    setIsLoading(true);
+    try {
+      const skills = querySkillsText.split(",").map(s => s.trim()).filter(Boolean);
+      const response = await searchCandidates(queryTitle, queryDescription, skills, 100);
+      return response.results.map(c => ({
+        "candidate_id": c.candidate_id,
+        "rank": c.rank,
+        "score": c.overall_score.toFixed(4),
+        "reasoning": c.ranking_reasons.join(". ") + "."
+      }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    const data = await prepareExportData();
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "ranked_candidates.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportExcel = async () => {
+    const data = await prepareExportData();
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Candidates");
+    XLSX.writeFile(workbook, "ranked_candidates.xlsx");
   };
 
   const isWorkspaceReady = health?.startup_status?.ready ?? false;
@@ -368,10 +401,19 @@ export default function Dashboard() {
             resultCount={candidates.length}
             onRefine={handleRefineSearch}
             onCompare={() => setShowCompare(true)}
+            onExportCSV={handleExportCSV}
+            onExportExcel={handleExportExcel}
           />
         )}
 
-        <AnalyticsCards metrics={metrics} hasSearched={hasSearched && candidates.length > 0} bestScore={candidates[0]?.overall_score} />
+        <AnalyticsCards
+          metrics={metrics}
+          hasSearched={hasSearched && candidates.length > 0}
+          bestScore={candidates[0]?.overall_score}
+          queryTitle={queryTitle}
+          queryDescription={queryDescription}
+          querySkills={querySkills}
+        />
 
         {showEmptyResults ? (
           <div className="flex-1 flex flex-col items-center justify-center py-20 text-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01]">

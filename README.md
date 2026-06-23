@@ -54,7 +54,7 @@ Job Description (unstructured text)
 ## Project Structure
 
 ```
-├── data/          # Local CSV/JSONL dataset directory (used when DB credentials are not supplied)
+├── data/          # Local CSV/JSONL dataset directory 
 ├── backend/       # FastAPI app — routes, settings, service orchestration, ML models, CLI utils
 └── frontend/      # Next.js 15 Tailwind recruiter dashboard
 ```

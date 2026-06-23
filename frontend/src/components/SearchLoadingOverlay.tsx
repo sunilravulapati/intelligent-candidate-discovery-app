@@ -16,11 +16,12 @@ interface SearchLoadingOverlayProps {
 export default function SearchLoadingOverlay({ isLoading }: SearchLoadingOverlayProps) {
   const [phaseIndex, setPhaseIndex] = useState(0);
 
+  if (!isLoading && phaseIndex !== 0) {
+    setPhaseIndex(0);
+  }
+
   useEffect(() => {
-    if (!isLoading) {
-      setPhaseIndex(0);
-      return;
-    }
+    if (!isLoading) return;
     const interval = setInterval(() => {
       setPhaseIndex((i) => Math.min(i + 1, PHASES.length - 1));
     }, 1200);

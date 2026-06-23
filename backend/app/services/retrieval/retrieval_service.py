@@ -347,47 +347,6 @@ class RetrievalService:
             stats["session_cache_misses"],
         )
 
-        # ── NORMALIZATION DIAGNOSTIC ────────────────────────────────────────────
-        # The query vector norm MUST be exactly 1.0 for IndexFlatIP to return cosine
-        # similarity. If norm deviates from 1.0, all returned distances are wrong
-        # (systematically low — this is the likely cause of 68% → 24% score drop).
-        _qv_flat = query_vec if len(query_vec.shape) == 1 else query_vec[0]
-        _qv_norm = float(np.linalg.norm(_qv_flat))
-        logger.info(
-            "NORM CHECK | query_vec_norm=%.6f (expected 1.0) | shape=%s | dtype=%s",
-            _qv_norm, str(query_vec.shape), str(query_vec.dtype),
-        )
-        print(
-            f"[NORM CHECK] query_vec norm={_qv_norm:.6f} (1.0=correct, deviation=bug) | "
-            f"shape={query_vec.shape} | dtype={query_vec.dtype}"
-        )
-
-        # ── QUERY TEXT DIAGNOSTIC ───────────────────────────────────────────────
-        # Log first 120 chars of query text to verify it matches the format used at
-        # index build time (build_semantic_index.py used build_candidate_search_string,
-        # we use build_job_query_string — these are intentionally different formats).
-        logger.info(
-            "QUERY TEXT | len=%s | prefix='%s'",
-            len(query_text), query_text[:120],
-        )
-        print(f"[QUERY TEXT] len={len(query_text)} | prefix='{query_text[:120]}'")
-
-        # Output the required format comparison
-        sample_candidate = next(iter(self.candidates_cache.values()), {})
-        candidate_text = self._embedding_model.build_candidate_search_string(sample_candidate)
-        print("\nCandidate Index Text:\n" + candidate_text[:500])
-        print("\nQuery Text:\n" + query_text)
-        
-        # We can see candidate has "Headline:", "Current Role:", etc., while Query has "Job Title:", "Description:"
-        # They are very structurally different.
-        format_compatible = False
-        print(f"\nFORMAT COMPATIBLE = {str(format_compatible).upper()}")
-        if not format_compatible:
-            print("Explanation: The index builder uses `build_candidate_search_string` which creates rich profiles like 'Headline: ... Current Role: ... Summary: ...'. "
-                  "The query uses `build_job_query_string` which outputs 'Job Title: ... Description: ... Required Skills: ...'. "
-                  "Because all-MiniLM-L6-v2 is a bi-encoder, differing structural formats lead to severely reduced cosine similarity scores. "
-                  "This format asymmetry is the primary driver of the ~68% -> ~24% semantic score collapse.\n")
-
         # ── FAISS SEARCH (pure index.search call) ──────────────────────────────
         # The timer wraps the entire self._faiss.search() call, which internally
         # logs FAISS_SEARCH_ONLY / METADATA_LOOKUP / POST_PROCESSING sub-timings.
@@ -402,28 +361,6 @@ class RetrievalService:
             "(sub-breakdown logged by [FAISS] line above)",
             faiss_ms, len(hits),
         )
-
-        # ── SEMANTIC SCORE DIAGNOSTICS ──────────────────────────────────────────
-        # IndexFlatIP with L2-normalized vectors returns cosine similarity ∈ [-1, +1].
-        # Expected range for top semantically relevant candidates: 0.35–0.80.
-        if hits:
-            _raw_scores = [s for _, s in hits]
-            _sem_min  = min(_raw_scores)
-            _sem_max  = max(_raw_scores)
-            _sem_avg  = sum(_raw_scores) / len(_raw_scores)
-            _sem_top10 = sorted(_raw_scores, reverse=True)[:10]
-            
-            print("\n================ SCORE DIAGNOSTICS ================")
-            print(f"MIN SCORE: {_sem_min:.4f}")
-            print(f"AVG SCORE: {_sem_avg:.4f}")
-            print(f"MAX SCORE: {_sem_max:.4f}")
-            print(f"TOP 10   : {[round(s,4) for s in _sem_top10]}")
-            print("===================================================\n")
-            
-            if _sem_max < 0.35:
-                print("Interpretation: semantic retrieval is broken (scores < 0.35). Format asymmetry is destroying relevance.")
-            elif _sem_max > 0.65:
-                print("Interpretation: ranking logic is responsible.")
 
         # ── CANDIDATE RECONSTRUCTION ────────────────────────────────────────────
         # For each of the top_k FAISS hits, look up the full candidate profile dict

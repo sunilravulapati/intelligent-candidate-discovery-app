@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CandidateMatch } from "@/lib/api";
-import { scorePercent, getMatchTier, getMatchTierColor } from "@/lib/ranking";
+import { getMatchTier, getMatchTierColor } from "@/lib/ranking";
 
 interface CandidateComparisonProps {
   candidates: CandidateMatch[];
