@@ -67,11 +67,9 @@ class CandidateFaissIndex:
         """
         import logging
         import time
-        _log = logging.getLogger(__name__)
 
         # Memory/Disk Check placeholders inside FAISS search
         # We don't read_index or JSON load here, but we will log if we did.
-        import time
 
         self._init_index()
         if self.index is None or self.index.ntotal == 0:

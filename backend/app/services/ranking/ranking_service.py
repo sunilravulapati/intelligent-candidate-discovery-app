@@ -1,8 +1,5 @@
-import re
 import logging
 from typing import List, Dict, Any, Optional, Set, Tuple
-
-import numpy as np
 
 from app.ml.feature_engineering import XGBoostFeatureEngineer
 from app.ml.ranker import CandidateRanker
@@ -213,13 +210,6 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "title_alignment":     0.35,  # Role Fit
     "skill_overlap":       0.30,  # Skill Fit
     "semantic_similarity": 0.20,  # Semantic Fit
-    "experience_match":    0.10,
-    "activity_score":      0.05,
-}
-
-OLD_WEIGHTS: Dict[str, float] = {
-    "semantic_similarity": 0.60,
-    "skill_overlap":       0.25,
     "experience_match":    0.10,
     "activity_score":      0.05,
 }

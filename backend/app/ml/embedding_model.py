@@ -145,16 +145,6 @@ class CandidateEmbeddingModel:
 
         return final_embeddings
 
-        # Log detailed timing breakdown in the console
-        print("\n================ EMBEDDING DETAILED TIMINGS ================")
-        print(f"Preprocessing: {t_preprocess:.2f}ms")
-        print(f"Model Encode: {t_model_encode:.2f}ms")
-        print(f"Postprocessing: {t_postprocess:.2f}ms")
-        print(f"Total Model Encode Step: {encode_ms:.2f}ms")
-        print("============================================================\n")
-
-        return embeddings
-
     def build_candidate_search_string(self, candidate_profile: dict) -> str:
         """
         Builds a rich composite text from a candidate profile for semantic indexing.

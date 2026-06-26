@@ -384,7 +384,7 @@ class RetrievalService:
             len(hits), len(results), n_missing, reconstruct_ms,
         )
         print(
-            f"[RECONSTRUCT] faiss_hits={len(hits)} → profiles={len(results)} "
+            f"[RECONSTRUCT] faiss_hits={len(hits)} -> profiles={len(results)} "
             f"(missing={n_missing}) in {reconstruct_ms:.2f}ms"
         )
 

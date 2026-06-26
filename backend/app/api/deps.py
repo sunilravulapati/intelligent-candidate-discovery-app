@@ -1,4 +1,3 @@
-from app.core.database import get_db
 from app.services.ingestion.ingestion_service import IngestionService
 from app.services.embeddings.embeddings_service import EmbeddingsService
 from app.services.retrieval.retrieval_service import RetrievalService

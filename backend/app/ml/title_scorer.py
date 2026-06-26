@@ -314,11 +314,3 @@ class TitleAlignmentScorer:
 
 # Module-level singleton
 _scorer = TitleAlignmentScorer()
-
-
-def score_title_alignment(job_title: str, candidate: Dict) -> float:
-    """
-    Module-level convenience function.  Returns [0, 1] title alignment score.
-    """
-    score, _ = _scorer.score_candidate(job_title, candidate)
-    return score

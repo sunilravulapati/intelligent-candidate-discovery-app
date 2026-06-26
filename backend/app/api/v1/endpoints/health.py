@@ -11,7 +11,6 @@ router = APIRouter()
 
 @router.get("/health")
 def health_check(
-    db: Session = Depends(get_db),
     ingestion: IngestionService = Depends(deps.get_ingestion_service),
     retrieval: RetrievalService = Depends(deps.get_retrieval_service)
 ):
