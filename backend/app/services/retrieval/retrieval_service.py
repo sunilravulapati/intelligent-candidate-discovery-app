@@ -388,6 +388,30 @@ class RetrievalService:
             f"(missing={n_missing}) in {reconstruct_ms:.2f}ms"
         )
 
+        # Fallback to Jaccard-based match if semantic search returned 0 cached profiles (typical on sample/lightweight datasets)
+        if len(results) == 0 and len(self.candidates_cache) > 0:
+            logger.info("Semantic matches not found in cache. Falling back to keyword Jaccard match for sample dataset.")
+            job_title_tokens = set(re.sub(r"\s+", " ", job_title.strip().lower()).split())
+            req_skills_lower = {s.lower() for s in required_skills}
+            
+            fallback_results = []
+            for cand in self.candidates_cache.values():
+                cand_skills_lower = {s.get("name", "").lower() for s in cand.get("skills", [])}
+                skill_ov = len(req_skills_lower & cand_skills_lower) / max(len(req_skills_lower), 1)
+                
+                cand_title = cand.get("profile", {}).get("current_title", "") or ""
+                cand_title_tokens = set(re.sub(r"\s+", " ", cand_title.strip().lower()).split())
+                
+                title_sim = 0.0
+                if job_title_tokens and cand_title_tokens:
+                    title_sim = len(job_title_tokens & cand_title_tokens) / len(job_title_tokens | cand_title_tokens)
+                
+                baseline = 0.6 * skill_ov + 0.4 * title_sim
+                fallback_results.append((cand, baseline))
+                
+            fallback_results.sort(key=lambda x: x[1], reverse=True)
+            results = fallback_results[:top_k]
+
         if return_timings:
             return results, timings
         return results
