@@ -8,7 +8,7 @@ primary_contact:
 team_members:
   - name: "Sunil Ravulapati"
     email: "sunilravulapati028@gmail.com"
-    role: "Solo Participant, Team Lead, Lead Developer"
+    role: "Solo Participant"
 
 github_repo: "https://github.com/sunilravulapati/intelligent-candidate-discovery-app"
 sandbox_link: "insert the link here"
