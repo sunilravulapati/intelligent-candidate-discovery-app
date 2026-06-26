@@ -110,7 +110,8 @@ function getApiBaseUrl(): string {
   if (typeof window !== "undefined") {
     return "";
   }
-  return process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  const url = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  return url.replace(/\/$/, "");
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
