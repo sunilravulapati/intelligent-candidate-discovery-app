@@ -20,7 +20,9 @@ node_modules/
 
 # Models & Embeddings
 backend/models/
-data/embeddings/
+data/embeddings/*
+!data/embeddings/faiss_candidates.index
+!.gitkeep
 *.index
 *.meta
 *.pkl
