@@ -27,6 +27,7 @@ class IngestionService:
         paths_to_check = {
             "challenge_jsonl": os.path.join(self.challenge_dir, "candidates.jsonl"),
             "challenge_sample": os.path.join(self.challenge_dir, "sample_candidates.json"),
+            "local_raw_jsonl_gz": os.path.join(self.data_dir, "raw", "candidates.jsonl.gz"),
             "local_raw_jsonl": os.path.join(self.data_dir, "raw", "candidates.jsonl"),
         }
 
@@ -44,6 +45,10 @@ class IngestionService:
         active_source = None
         if status["challenge_jsonl"]["exists"]:
             active_source = "challenge_jsonl"
+        elif status["local_raw_jsonl"]["exists"] and status["local_raw_jsonl"]["size_mb"] > 10.0:
+            active_source = "local_raw_jsonl"
+        elif status["local_raw_jsonl_gz"]["exists"]:
+            active_source = "local_raw_jsonl_gz"
         elif status["local_raw_jsonl"]["exists"]:
             active_source = "local_raw_jsonl"
         elif status["challenge_sample"]["exists"]:

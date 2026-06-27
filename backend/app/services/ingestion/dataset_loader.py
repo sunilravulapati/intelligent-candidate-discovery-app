@@ -13,8 +13,14 @@ class DatasetLoader:
     
     @staticmethod
     def stream_jsonl(file_path: str) -> Generator[Dict[str, Any], None, None]:
-        """Streams records line-by-line from a JSONL file."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        """Streams records line-by-line from a JSONL file (supports gzip)."""
+        if file_path.lower().endswith(".gz"):
+            import gzip
+            open_func = lambda p: gzip.open(p, "rt", encoding="utf-8")
+        else:
+            open_func = lambda p: open(p, "r", encoding="utf-8")
+
+        with open_func(file_path) as f:
             for line in f:
                 if line.strip():
                     yield json.loads(line)
@@ -86,7 +92,7 @@ class DatasetLoader:
         ext = os.path.splitext(file_path)[1].lower()
         logger.info(f"Loading dataset file: {file_path} with extension {ext}")
         
-        if ext == ".jsonl":
+        if ext == ".jsonl" or file_path.lower().endswith(".jsonl.gz"):
             yield from cls.stream_jsonl(file_path)
         elif ext == ".json":
             yield from cls.load_json(file_path)

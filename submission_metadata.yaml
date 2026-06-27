@@ -11,7 +11,7 @@ team_members:
     role: "Solo Participant"
 
 github_repo: "https://github.com/sunilravulapati/intelligent-candidate-discovery-app"
-sandbox_link: "insert the link here"
+sandbox_link: "https://intelligent-candidate-discovery-app.vercel.app/"
 
 reproduce_command: "cd backend && .\venv\Scripts\python.exe scripts/create_submission.py --output ../submission.csv"
 

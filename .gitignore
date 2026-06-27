@@ -21,11 +21,12 @@ node_modules/
 # Models & Embeddings
 backend/models/
 data/embeddings/*
-!data/embeddings/faiss_candidates.index
 !.gitkeep
 *.index
 *.meta
 *.pkl
+!data/embeddings/faiss_candidates.index
+!data/embeddings/faiss_candidates.index.meta
 
 # Build
 dist/
