@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +10,9 @@ class Settings(BaseSettings):
 
     # Database connection string (optional)
     DATABASE_URL: Optional[str] = None
+
+    # Comma-separated list of extra CORS origins (e.g. Render preview URLs)
+    ALLOWED_ORIGINS: str = ""
 
     # Path configurations
     DATA_DIR: str = "../data"

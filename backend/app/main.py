@@ -99,16 +99,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Set up CORS middleware for local frontend access
+# Set up CORS middleware — combine hardcoded origins with env-configurable extras
+_base_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "https://intelligent-candidate-discovery-app.vercel.app",
+]
+_extra_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+_all_origins = list(dict.fromkeys(_base_origins + _extra_origins))  # deduplicated
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "https://intelligent-candidate-discovery-app.vercel.app",
-    ],
+    allow_origins=_all_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
