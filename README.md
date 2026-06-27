@@ -97,6 +97,8 @@ npm run dev
 ### Backend: https://talentlens-0m1g.onrender.com
 
 ---
+## Loom Video
+### Link: https://www.loom.com/share/0dda484cd7af4c0791affe542d9890d8
 
 ## Demo
 
