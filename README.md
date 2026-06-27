@@ -89,17 +89,12 @@ npm install
 npm run dev
 ```
 
-### Docker Compose (run both together)
-
-```bash
-docker-compose up --build
-```
-
 ---
 
 ## Deployment
 
-> Add deployed links here.
+### Frontend: https://intelligent-candidate-discovery-app.vercel.app
+### Backend: https://talentlens-0m1g.onrender.com
 
 ---
 
@@ -107,8 +102,3 @@ docker-compose up --build
 
 > Add Loom video link here.
 
----
-
-## License
-
-> Add license information here.
